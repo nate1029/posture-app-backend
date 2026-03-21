@@ -1,0 +1,12 @@
+C:\Users\Naiteek\Downloads\didi project\app\src\main\java\com\didi\neckposture\sensors\OrientationProvider.kt
+C:\Users\Naiteek\Downloads\didi project\app\src\main\java\com\didi\neckposture\ui\PostureApp.kt
+C:\Users\Naiteek\Downloads\didi project\app\src\main\java\com\didi\neckposture\ui\PostureSessionViewModel.kt
+C:\Users\Naiteek\Downloads\didi project\app\src\main\java\com\didi\neckposture\domain\Models.kt
+C:\Users\Naiteek\Downloads\didi project\app\src\main\java\com\didi\neckposture\fusion\PostureFusionEngine.kt
+C:\Users\Naiteek\Downloads\didi project\app\src\main\java\com\didi\neckposture\ui\PostureSessionScreen.kt
+C:\Users\Naiteek\Downloads\didi project\app\src\main\java\com\didi\neckposture\data\SessionLogger.kt
+C:\Users\Naiteek\Downloads\didi project\app\src\main\java\com\didi\neckposture\MainActivity.kt
+C:\Users\Naiteek\Downloads\didi project\app\src\main\java\com\didi\neckposture\camera\CameraAnalyzer.kt
+C:\Users\Naiteek\Downloads\didi project\app\src\main\java\com\didi\neckposture\domain\PostureClassifier.kt
+C:\Users\Naiteek\Downloads\didi project\app\src\main\java\com\didi\neckposture\feedback\FeedbackController.kt
+C:\Users\Naiteek\Downloads\didi project\app\src\main\java\com\didi\neckposture\pose\HeadPoseEstimator.kt
