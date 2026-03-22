@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Posture Engine MVP</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Screen 1: Permissions -->
+    <div id="setup-screen" class="screen active">
+        <div class="glass-card">
+            <h1>Posture MVP Protocol</h1>
+            <p>To run the 3D and 2D posture algorithms in the browser, we need access to your camera and phone gyroscope.</p>
+            <p class="small-text">All processing is 100% client-side. No video is ever recorded or sent.</p>
+            <button id="start-btn">Grant Access & Start</button>
+        </div>
+    </div>
+
+    <!-- Screen 2: Main App -->
+    <div id="app-screen" class="screen">
+        <!-- Video Feed (hidden, drawn to canvas) -->
+        <video id="webcam" autoplay playsinline></video>
+        <!-- Canvas for drawing landmarks -->
+        <canvas id="output_canvas"></canvas>
+        
+        <!-- UI Overlay -->
+        <div class="hud">
+            <div class="controls">
+                <button id="btn-3d" class="toggle-btn active" onclick="setMode('3D')">3D Math Algorithm</button>
+                <button id="btn-2d" class="toggle-btn" onclick="setMode('2D')">2D Heuristics Engine</button>
+            </div>
+            
+            <div class="metrics-panel glass-card">
+                <div class="debug-row">
+                    <span>📱 Gyro Pitch:</span>
+                    <span id="val-gyro" class="system-font">0.0°</span>
+                </div>
+                
+                <hr id="panel-divider">
+
+                <!-- 3D Metrics -->
+                <div id="metrics-3d" class="metrics-group">
+                    <div class="debug-row">
+                        <span>📷 Camera Face Pitch:</span>
+                        <span id="val-face-pitch" class="system-font">0.0°</span>
+                    </div>
+                    <div class="debug-row highlight">
+                        <span>📐 True Neck Pitch (Fused):</span>
+                        <span id="val-true-pitch" class="system-font">0.0°</span>
+                    </div>
+                </div>
+                
+                <!-- 2D Metrics -->
+                <div id="metrics-2d" class="metrics-group" style="display: none;">
+                    <div class="debug-row">
+                        <span>📏 Face Ratio (Chin/Forehead):</span>
+                        <span id="val-vr" class="system-font">0.00</span>
+                    </div>
+                    <div class="debug-row highlight">
+                        <span>🔍 Face Z-Zoom (Pixels):</span>
+                        <span id="val-size" class="system-font">0 px</span>
+                    </div>
+                    <button id="btn-calibrate" class="action-btn" onclick="calibrate2D()">Reset 2D Baseline</button>
+                </div>
+            </div>
+            
+            <div id="status-banner" class="status-banner status-loading">
+                LOADING AI MODELS...
+            </div>
+        </div>
+    </div>
+
+    <!-- Load MediaPipe Tasks Vision -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.js" crossorigin="anonymous"></script>
+    <script src="app.js"></script>
+</body>
+</html>

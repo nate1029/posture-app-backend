@@ -1,0 +1,201 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+body {
+    background-color: #0A0A0A;
+    color: #FAFAFA;
+    overflow: hidden;
+    touch-action: none;
+}
+
+.screen {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.screen.active {
+    display: flex;
+}
+
+.glass-card {
+    background: rgba(20, 20, 20, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 24px;
+    max-width: 90%;
+    text-align: center;
+}
+
+.glass-card h1 {
+    font-size: 24px;
+    margin-bottom: 12px;
+    font-weight: 800;
+}
+
+.glass-card p {
+    font-size: 15px;
+    color: #A0A0A0;
+    margin-bottom: 20px;
+}
+
+.small-text {
+    font-size: 12px;
+    opacity: 0.6;
+}
+
+button {
+    background: #007AFF;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 14px 24px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+button:active {
+    background: #0056b3;
+}
+
+#webcam {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    object-fit: cover;
+    z-index: 1;
+}
+
+#output_canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 2;
+}
+
+.hud {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    pointer-events: none; /* Let touches pass through to video/canvas if needed */
+}
+
+.controls {
+    display: flex;
+    gap: 10px;
+    padding: 16px;
+    pointer-events: auto;
+}
+
+.toggle-btn {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(10px);
+    color: #888;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 12px;
+}
+
+.toggle-btn.active {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.metrics-panel {
+    margin: 0 16px;
+    text-align: left;
+    pointer-events: auto;
+}
+
+.debug-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: #A0A0A0;
+}
+
+.debug-row.highlight {
+    color: #FFF;
+    font-weight: 600;
+}
+
+.system-font {
+    font-family: 'JetBrains Mono', 'Geist Mono', monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+hr {
+    border: 0;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 12px 0;
+}
+
+.action-btn {
+    width: 100%;
+    padding: 10px;
+    margin-top: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.action-btn:active {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.status-banner {
+    width: 100%;
+    padding: 24px;
+    text-align: center;
+    font-weight: 800;
+    font-size: 20px;
+    letter-spacing: 1px;
+    transition: background-color 0.3s;
+}
+
+.status-loading {
+    background-color: #333;
+    color: #888;
+}
+
+.status-good {
+    background-color: #2E8B57; /* Sea green */
+    color: white;
+}
+
+.status-moderate {
+    background-color: #DAA520; /* Goldenrod */
+    color: white;
+}
+
+.status-risk {
+    background-color: #C0392B; /* Dark red */
+    color: white;
+}
