@@ -44,8 +44,7 @@
         </div>
     </div>
 
-    <!-- Load MediaPipe Tasks Vision -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.js" crossorigin="anonymous"></script>
-    <script src="app.js"></script>
+    <!-- Load app as ES Module so it can import MediaPipe directly -->
+    <script type="module" src="app.js"></script>
 </body>
 </html>
