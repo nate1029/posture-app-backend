@@ -1,6 +1,5 @@
 import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
 
-// DOM Setup
 const startBtn = document.getElementById('start-btn');
 const setupScreen = document.getElementById('setup-screen');
 const appScreen = document.getElementById('app-screen');
@@ -13,13 +12,12 @@ const btn2d = document.getElementById('btn-2d');
 const v3d = document.getElementById('view-3d');
 const v2d = document.getElementById('view-2d');
 
-// Engine State
 let currentMode = '3D';
 let faceLandmarker = null;
 let lastVideoTime = -1;
 let gyroPitch = 90;
 
-let baselines = { locked: false, vr: [], size: [], gyro: 90 };
+let rollingWindowSize = [];
 
 window.setMode = (mode) => {
     currentMode = mode;
@@ -101,7 +99,7 @@ async function renderLoop() {
         lastVideoTime = video.currentTime;
         const results = faceLandmarker.detectForVideo(video, Date.now());
 
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         if (results.faceLandmarks && results.faceLandmarks.length > 0) {
             const lm = results.faceLandmarks[0];
@@ -120,7 +118,6 @@ async function renderLoop() {
     requestAnimationFrame(renderLoop);
 }
 
-// Exactly mathematically identical pitch calculation
 function process3DPhysics(matrix) {
     if (!matrix) return;
     const facePitchRad = Math.atan2(matrix[6], matrix[10]);
@@ -138,36 +135,40 @@ function process3DPhysics(matrix) {
 
 function process2DHeuristics(lm) {
     const h = canvas.height; const w = canvas.width;
-    const vr = (lm[152].y * h - lm[1].y * h) / Math.max(1, lm[1].y * h - lm[10].y * h);
-    const sizePx = Math.hypot((lm[263].x - lm[33].x) * w, (lm[263].y - lm[33].y) * h);
-
-    if (!baselines.locked) {
-        baselines.vr.push(vr); baselines.size.push(sizePx);
-        let pct = Math.floor((baselines.vr.length/30)*100);
-        document.getElementById('calib-status').innerText = `CALIBRATING BASELINE: ${pct}% - PLEASE SIT STRAIGHT`;
-        updateStatus("CALIBRATING...", "loading");
-        
-        if (baselines.vr.length >= 30) {
-            baselines.locked = true;
-            baselines.vr_mean = baselines.vr.reduce((a,b)=>a+b)/30;
-            baselines.size_mean = baselines.size.reduce((a,b)=>a+b)/30;
-            baselines.gyro = gyroPitch; 
-            document.getElementById('calib-status').innerText = "Baseline Locked Automatically.";
-        }
-        return;
-    }
     
-    let adjusted_VR = vr + ((gyroPitch - baselines.gyro) * 0.005); 
-    let vrDelta = adjusted_VR - baselines.vr_mean;
-    let zoomMult = sizePx / baselines.size_mean;
+    // Z-DEPTH ABSOLUTE CALCULATION (Immune to baselines)
+    // MediaPipe Z-depth: Negative = closer to camera.
+    // If looking down: Forehead swings closer (-), Chin swings further (+). Forehead - Chin = Very Negative.
+    const foreheadZ = lm[10].z;
+    const chinZ = lm[152].z;
+    
+    // Trigonometric Gyro Correction on Depth
+    // We adjust the Z depth by rotating the Z/Y plane mathematically against the phone's tilt.
+    const gyroDeltaRad = (90 - gyroPitch) * (Math.PI / 180);
+    const correctedForeheadZ = foreheadZ * Math.cos(gyroDeltaRad) - lm[10].y * Math.sin(gyroDeltaRad);
+    const correctedChinZ = chinZ * Math.cos(gyroDeltaRad) - lm[152].y * Math.sin(gyroDeltaRad);
+    
+    // Absolute Pitch Differential (No calibrating needed)
+    const absoluteZDiff = correctedForeheadZ - correctedChinZ; 
 
-    document.getElementById('metric-vr').innerText = adjusted_VR.toFixed(2);
-    document.getElementById('metric-vr-delta').innerText = `${vrDelta > 0 ? '+':''}${vrDelta.toFixed(2)}`;
+    // SCREEN ZOOM TRIPLE FLUSH (Rolling Minimum Baseline)
+    // Tracks screen distance dynamically. Slowly resets if you sit back.
+    const sizePx = Math.hypot((lm[263].x - lm[33].x) * w, (lm[263].y - lm[33].y) * h);
+    rollingWindowSize.push(sizePx);
+    if (rollingWindowSize.length > 30 * 15) rollingWindowSize.shift(); // 15 Second rolling memory
+    const optimalSize = Math.min(...rollingWindowSize); 
+    const zoomMult = sizePx / Math.max(1, optimalSize);
+
+    // UI population
+    document.getElementById('metric-vr').innerText = absoluteZDiff.toFixed(3);
+    document.getElementById('metric-vr-delta').innerText = "ABSOLUTE (No Base)";
     document.getElementById('metric-zoom').innerText = `${sizePx.toFixed(0)}px (${zoomMult.toFixed(2)}x)`;
+    document.getElementById('calib-status').innerText = `Self-Healing Z-Depth Active (No Boot Delay)`;
 
     let alerts = [];
-    if (vrDelta < -0.15) alerts.push("Looking Down (Harsh Drop)");
-    else if (vrDelta < -0.06) alerts.push("Looking Down (Mild)");
+    if (absoluteZDiff < -0.075) alerts.push("Looking Down (Harsh Drop)");
+    else if (absoluteZDiff < -0.045) alerts.push("Looking Down (Mild)");
+    
     if (zoomMult > 1.15) alerts.push("Turtle Neck (Leaning into Screen)");
 
     if (alerts.length >= 2 || alerts.join('').includes('Harsh')) updateStatus("HIGH RISK", "risk", alerts);
