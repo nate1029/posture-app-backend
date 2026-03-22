@@ -8,16 +8,12 @@ const ctx = canvas.getContext('2d');
 
 const btn3d = document.getElementById('btn-3d');
 const btn2d = document.getElementById('btn-2d');
-const ui3d = document.getElementById('metrics-3d');
-const ui2d = document.getElementById('metrics-2d');
-const banner = document.getElementById('status-banner');
 
 // Engine State
 let currentMode = '3D'; // '3D' or '2D'
 let faceLandmarker = null;
 let lastVideoTime = -1;
-let framesTracked = 0;
-let gyroPitch = 90; // Default vertical
+let gyroPitch = 90; // Default flat
 
 // 2D Baselines
 let baselines = {
@@ -27,32 +23,19 @@ let baselines = {
     gyro: 90
 };
 
-// Global toggle for UI
 window.setMode = (mode) => {
     currentMode = mode;
     btn3d.classList.toggle('active', mode === '3D');
     btn2d.classList.toggle('active', mode === '2D');
-    ui3d.style.display = mode === '3D' ? 'block' : 'none';
-    ui2d.style.display = mode === '2D' ? 'block' : 'none';
 };
-
-window.calibrate2D = () => {
-    baselines.locked = false;
-    baselines.vr = [];
-    baselines.size = [];
-    setStatus("CALIBRATING...", "status-loading");
-};
-
-function setStatus(text, className) {
-    banner.innerText = text;
-    banner.className = `status-banner ${className}`;
-}
 
 // -------------------------------------------------------------
 // Initialize App & Permissions
 // -------------------------------------------------------------
 startBtn.addEventListener('click', async () => {
-    // 1. Request Gyro (Mandatory for iOS 13+)
+    document.getElementById("loading-msg").innerText = "Requesting Gyro...";
+
+    // Request Gyro (Mandatory for iOS 13+)
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         try {
             const permission = await DeviceOrientationEvent.requestPermission();
@@ -61,65 +44,74 @@ startBtn.addEventListener('click', async () => {
             }
         } catch(e) { console.warn(e); }
     } else {
-        enableGyro(); // Android / Non-Secure contexts
+        enableGyro(); 
     }
 
-    // 2. Hide Setup Screen
+    document.getElementById("loading-msg").innerText = "Requesting Camera...";
+    await startCamera();
+
+    document.getElementById("loading-msg").innerText = "Downloading AI Model (Wait!)...";
     setupScreen.classList.remove('active');
     appScreen.classList.add('active');
-
-    // 3. Start Camera & AI
-    await startCamera();
-    await initMediaPipe();
     
-    // 4. Start Render Loop
+    await initMediaPipe();
     requestAnimationFrame(renderLoop);
 });
 
 function enableGyro() {
     window.addEventListener('deviceorientation', (e) => {
         if (e.beta !== null) {
-            // beta is 90 when standing up, 0 when flat.
             gyroPitch = e.beta; 
-            document.getElementById('val-gyro').innerText = `${gyroPitch.toFixed(1)}°`;
         }
     });
+}
+
+function putText(text, x, y, color = "#FFF", size = "20px", bold = false) {
+    ctx.fillStyle = color;
+    ctx.font = `${bold ? "bold " : ""}${size} 'Inter', sans-serif`;
+    ctx.fillText(text, x, y);
+}
+
+function fillRectC(x, y, w, h, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, w, h);
 }
 
 async function startCamera() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "user", width: 640, height: 480 }
+            video: { facingMode: "user", width: {ideal: 640}, height: {ideal: 480} }
         });
         video.srcObject = stream;
-        video.onloadeddata = () => {
-             // Keep canvas size synced to video physical dimensions
-             canvas.width = video.clientWidth;
-             canvas.height = video.clientHeight;
-        }
+        
+        return new Promise((resolve) => {
+            video.onloadeddata = () => {
+                video.play();
+                resolve();
+            }
+        });
     } catch (err) {
-        alert("Camera access denied or failed.");
+        alert("CAMERA ERROR: " + err.message);
     }
 }
 
 async function initMediaPipe() {
-    setStatus("LOADING AI MODELS...", "status-loading");
-    const vision = await FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
-    );
-    
-    faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
-        baseOptions: {
-            modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task`,
-            delegate: "GPU"
-        },
-        outputFaceBlendshapes: false,
-        outputFacialTransformationMatrixes: true, // CRITICAL FOR 3D MATH!
-        runningMode: "VIDEO",
-        numFaces: 1
-    });
-    
-    setStatus("ENGINE READY", "status-good");
+    try {
+        const vision = await FilesetResolver.forVisionTasks(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+        );
+        faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+            baseOptions: {
+                modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task`,
+                delegate: "GPU"
+            },
+            outputFacialTransformationMatrixes: true,
+            runningMode: "VIDEO",
+            numFaces: 1
+        });
+    } catch (e) {
+        alert("AI MODEL ERROR: " + e.message);
+    }
 }
 
 // -------------------------------------------------------------
@@ -127,26 +119,38 @@ async function initMediaPipe() {
 // -------------------------------------------------------------
 async function renderLoop() {
     if (!faceLandmarker) {
+        // Draw loading screen if camera is active but model downloading
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.fillStyle = "#111";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        putText("DOWNLOADING AI MODELS...", 40, 150, "#00FFAA", "24px", true);
         requestAnimationFrame(renderLoop);
         return;
     }
     
-    canvas.width = video.clientWidth;
-    canvas.height = video.clientHeight;
+    // Make canvas exact size of video rendering for accurate drawing
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
     
     let nowInMs = Date.now();
-    if (video.currentTime !== lastVideoTime) {
+    if (video.currentTime !== lastVideoTime && video.videoWidth > 0) {
         lastVideoTime = video.currentTime;
         const results = faceLandmarker.detectForVideo(video, nowInMs);
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Draw webcam frame raw
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+        // Draw HUD Background
+        fillRectC(10, 10, canvas.width - 20, 150, "rgba(20,20,20,0.85)");
+        
         if (results.faceLandmarks && results.faceLandmarks.length > 0) {
             const lm = results.faceLandmarks[0];
             
-            // Draw a subtle wireframe outline around face points
             ctx.fillStyle = "rgba(0, 255, 255, 0.4)";
-            for (let i = 0; i < lm.length; i+=10) { 
+            for (let i = 0; i < lm.length; i+=5) { 
                 ctx.fillRect(lm[i].x * canvas.width, lm[i].y * canvas.height, 2, 2);
             }
 
@@ -156,7 +160,8 @@ async function renderLoop() {
                 process2DHeuristics(lm);
             }
         } else {
-            setStatus("NO FACE DETECTED", "status-loading");
+            putText("NO PERSON DETECTED", 30, 60, "#FF4040", "22px", true);
+            putText(`📱 Phone Gyro: ${gyroPitch.toFixed(1)}°`, 30, 100, "#CCC", "18px");
         }
     }
     requestAnimationFrame(renderLoop);
@@ -168,37 +173,39 @@ async function renderLoop() {
 function process3DPhysics(matrix) {
     if (!matrix) return;
     
-    // Extract Pitch from the 4x4 homogenous matrix (approximated Euler representation)
-    // Looking down = Positive pitch.
+    // Math logic identically copied from the original Python script
     const facePitchRad = Math.atan2(matrix[6], matrix[10]);
     let facePitch = (facePitchRad * 180) / Math.PI;
     
-    // Apple's device orientation `beta` is 90 when perfectly vertical.
-    // If the phone is tilted slightly down towards you, it might be 60.
-    // Offset = 90 - 60 = 30° backwards tilt.
+    // Gyro offsets (Beta 90 = Upright, Beta < 90 = Phone tilted back).
     const phoneOffset = 90 - gyroPitch; 
     
-    // FUSION Formula: True Neck Drop = Face drop + Phone drop
+    // FUSION Formula
     let trueNeckPitch = facePitch + phoneOffset;
-    
-    document.getElementById('val-face-pitch').innerText = `${facePitch.toFixed(1)}°`;
-    document.getElementById('val-true-pitch').innerText = `${trueNeckPitch.toFixed(1)}°`;
 
-    if (trueNeckPitch > 35) {
-        setStatus("HIGH RISK (Drop Neck)", "status-risk");
-    } else if (trueNeckPitch > 20) {
-        setStatus("MODERATE STRAIN", "status-moderate");
-    } else {
-        setStatus("GOOD POSTURE", "status-good");
+    // UI drawing exactly like OpenCV script
+    let statusText = "GOOD POSTURE";
+    let color = "#50DC3C"; // Green
+
+    if (trueNeckPitch > 32) {
+        statusText = "HIGH RISK (Dropdown Neck)";
+        color = "#DC1E1E"; // Red
+    } else if (trueNeckPitch > 18) {
+        statusText = "MODERATE STRAIN";
+        color = "#FAC800"; // Yellow
     }
+
+    putText(`POSTURE: ${statusText}`, 25, 45, color, "26px", true);
+    
+    putText(`📱 Phone Gyro: ${gyroPitch.toFixed(1)}°`, 25, 80, "#FFF", "16px");
+    putText(`🎥 Camera Face: ${facePitch.toFixed(1)}°`, 25, 110, "#FFF", "16px");
+    putText(`📐 True Neck Fused: ${trueNeckPitch.toFixed(1)}°`, 25, 140, "#00FFAA", "16px", true);
 }
 
 // -------------------------------------------------------------
 // 2D Heuristics Engine (Distances & Ratios)
 // -------------------------------------------------------------
 function process2DHeuristics(lm) {
-    // MediaPipe Landmarks:
-    // Forehead: 10, Nose: 1, Chin: 152, L-Eye: 33, R-Eye: 263
     const h = canvas.height;
     const w = canvas.width;
     
@@ -206,56 +213,71 @@ function process2DHeuristics(lm) {
     const noseY = lm[1].y * h;
     const chinY = lm[152].y * h;
     
-    // 1. Vertical Ratio (Face Flexion Compression)
-    const upperFace = noseY - foreheadY;
+    const upperFace = Math.max(1, noseY - foreheadY);
     const lowerFace = chinY - noseY;
-    let vr = lowerFace / Math.max(1.0, upperFace);
+    let vr = lowerFace / upperFace;
     
-    // 2. Face Z-Zoom (Leaning Close)
     const dx = (lm[263].x - lm[33].x) * w;
     const dy = (lm[263].y - lm[33].y) * h;
     const sizePixels = Math.hypot(dx, dy);
 
-    // Baseline Gathering Phase
+    // Initial silent calibration (30 frames)
     if (!baselines.locked) {
         baselines.vr.push(vr);
         baselines.size.push(sizePixels);
         
         let progress = Math.floor((baselines.vr.length / 30) * 100);
-        setStatus(`CALIBRATING: ${progress}%`, "status-loading");
+        putText(`CALIBRATING BASELINE: ${progress}%`, 25, 60, "#00E0FF", "24px", true);
+        putText(`Please hold your phone up and look straight.`, 25, 90, "#CCC", "16px");
         
         if (baselines.vr.length >= 30) {
             baselines.locked = true;
             baselines.vr_mean = baselines.vr.reduce((a,b)=>a+b) / 30;
             baselines.size_mean = baselines.size.reduce((a,b)=>a+b) / 30;
-            baselines.gyro = gyroPitch; // Remember what angle the phone was at!
+            baselines.gyro = gyroPitch; 
         }
         return;
     }
     
-    // Active Analysis Mode
-    // Mix the Gyro Delta into the 2D Vertical Ratio! 
-    // If the phone tilted upwards (beta decreased), the ratio visually compressed. We must penalize it.
+    // Mix Gyro Delta into 2D Ratio
     let gyroDelta = gyroPitch - baselines.gyro;
-    let adjusted_VR = vr + (gyroDelta * 0.006); // 0.006 is a standard correction constant for 2D foreshortening.
+    let adjusted_VR = vr + (gyroDelta * 0.005); 
     
     let vrDelta = adjusted_VR - baselines.vr_mean;
     let zoomMultiplier = sizePixels / baselines.size_mean;
 
-    document.getElementById('val-vr').innerText = `${adjusted_VR.toFixed(2)} (Δ ${vrDelta > 0 ? '+':''}${vrDelta.toFixed(2)})`;
-    document.getElementById('val-size').innerText = `${sizePixels.toFixed(0)}px (${zoomMultiplier.toFixed(2)}x)`;
+    let alerts = [];
+    if (vrDelta < -0.15) alerts.push("Looking Down (Harsh Drop)");
+    else if (vrDelta < -0.06) alerts.push("Looking Down (Mild Drop)");
+    
+    if (zoomMultiplier > 1.15) alerts.push("Leaning Into Screen");
 
-    let alerts = 0;
-    if (vrDelta < -0.15) alerts += 2;      // Harsh drop
-    else if (vrDelta < -0.06) alerts += 1; // Mild drop
-    
-    if (zoomMultiplier > 1.15) alerts += 1; // Turtle necking
-    
-    if (alerts >= 2) {
-        setStatus("HIGH RISK (Slouch / Zoom)", "status-risk");
-    } else if (alerts === 1) {
-        setStatus("MODERATE STRAIN", "status-moderate");
-    } else {
-        setStatus("GOOD POSTURE", "status-good");
+    let statusText = "GOOD POSTURE";
+    let color = "#50DC3C"; 
+
+    if (alerts.length >= 2 || alerts.join('').includes('Harsh')) {
+        statusText = "HIGH RISK";
+        color = "#DC1E1E";
+    } else if (alerts.length === 1) {
+        statusText = "MODERATE STRAIN";
+        color = "#FAC800";
     }
+
+    putText(`POSTURE: ${statusText}`, 25, 45, color, "26px", true);
+    
+    let lineY = 80;
+    if (alerts.length === 0) {
+        putText("Perfect! You look great.", 25, lineY, "#CCC", "16px");
+    } else {
+        alerts.forEach(a => {
+            putText(`- ${a}`, 25, lineY, color, "16px", true);
+            lineY += 25;
+        });
+    }
+
+    // Debug Data Panel Right Align
+    let rw = canvas.width - 200;
+    putText(`VR Ratio: ${adjusted_VR.toFixed(2)}`, rw, 80, "#FFF", "13px");
+    putText(`VR Delta: ${vrDelta > 0 ? '+':''}${vrDelta.toFixed(2)}`, rw, 105, "#FFF", "13px");
+    putText(`Z-Zoom: ${sizePixels.toFixed(0)}px`, rw, 130, "#FFF", "13px");
 }

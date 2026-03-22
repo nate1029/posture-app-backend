@@ -4,70 +4,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Posture Engine MVP</title>
-    <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background: #000; color: #fff; overflow: hidden; touch-action: none; }
+        .screen { position: absolute; top:0; left:0; width:100vw; height:100vh; display:none; flex-direction:column; justify-content:center; align-items:center; }
+        .screen.active { display: flex; }
+        .glass-card { background: rgba(20,20,20,0.8); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; padding: 24px; text-align: center; max-width: 90%; z-index: 100;}
+        button { background: #007AFF; color: white; border: none; padding: 14px 24px; font-size: 16px; font-weight: bold; border-radius: 8px; margin-top: 20px; cursor:pointer;}
+        
+        #webcam { position: absolute; width: 100vw; height: 100vh; object-fit: cover; z-index: 1; visibility: hidden; }
+        #output_canvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 2; }
+        
+        .hud { position: absolute; z-index: 3; top: 0; width: 100%; pointer-events: none; }
+        .toggles { display: flex; padding: 15px; gap: 10px; pointer-events: auto;}
+        .toggle-btn { margin-top: 0; flex: 1; background: rgba(0,0,0,0.7); border: 1px solid #555; }
+        .toggle-btn.active { background: #444; border: 1px solid #fff; }
+    </style>
 </head>
 <body>
-    <!-- Screen 1: Permissions -->
     <div id="setup-screen" class="screen active">
         <div class="glass-card">
-            <h1>Posture MVP Protocol</h1>
-            <p>To run the 3D and 2D posture algorithms in the browser, we need access to your camera and phone gyroscope.</p>
-            <p class="small-text">All processing is 100% client-side. No video is ever recorded or sent.</p>
-            <button id="start-btn">Grant Access & Start</button>
+            <h1 id="loading-msg">Posture MVP Protocol</h1>
+            <p>Click below to initialize AI models, camera, and the phone gyroscope.</p>
+            <button id="start-btn">Grant Native Access</button>
         </div>
     </div>
 
-    <!-- Screen 2: Main App -->
     <div id="app-screen" class="screen">
-        <!-- Video Feed (hidden, drawn to canvas) -->
-        <video id="webcam" autoplay playsinline></video>
-        <!-- Canvas for drawing landmarks -->
+        <!-- MUTED attributes are critical, otherwise Safari blocks webcam immediately! -->
+        <video id="webcam" autoplay playsinline muted></video>
         <canvas id="output_canvas"></canvas>
         
-        <!-- UI Overlay -->
         <div class="hud">
-            <div class="controls">
-                <button id="btn-3d" class="toggle-btn active" onclick="setMode('3D')">3D Math Algorithm</button>
-                <button id="btn-2d" class="toggle-btn" onclick="setMode('2D')">2D Heuristics Engine</button>
-            </div>
-            
-            <div class="metrics-panel glass-card">
-                <div class="debug-row">
-                    <span>📱 Gyro Pitch:</span>
-                    <span id="val-gyro" class="system-font">0.0°</span>
-                </div>
-                
-                <hr id="panel-divider">
-
-                <!-- 3D Metrics -->
-                <div id="metrics-3d" class="metrics-group">
-                    <div class="debug-row">
-                        <span>📷 Camera Face Pitch:</span>
-                        <span id="val-face-pitch" class="system-font">0.0°</span>
-                    </div>
-                    <div class="debug-row highlight">
-                        <span>📐 True Neck Pitch (Fused):</span>
-                        <span id="val-true-pitch" class="system-font">0.0°</span>
-                    </div>
-                </div>
-                
-                <!-- 2D Metrics -->
-                <div id="metrics-2d" class="metrics-group" style="display: none;">
-                    <div class="debug-row">
-                        <span>📏 Face Ratio (Chin/Forehead):</span>
-                        <span id="val-vr" class="system-font">0.00</span>
-                    </div>
-                    <div class="debug-row highlight">
-                        <span>🔍 Face Z-Zoom (Pixels):</span>
-                        <span id="val-size" class="system-font">0 px</span>
-                    </div>
-                    <button id="btn-calibrate" class="action-btn" onclick="calibrate2D()">Reset 2D Baseline</button>
-                </div>
-            </div>
-            
-            <div id="status-banner" class="status-banner status-loading">
-                LOADING AI MODELS...
+            <div class="toggles">
+                <button id="btn-3d" class="toggle-btn active" onclick="setMode('3D')">3D Mode</button>
+                <button id="btn-2d" class="toggle-btn" onclick="setMode('2D')">2D Mode</button>
             </div>
         </div>
     </div>
