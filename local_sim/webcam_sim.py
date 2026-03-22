@@ -508,50 +508,14 @@ def _draw_overlay(
 ) -> None:
     h, w = frame.shape[:2]
     panel_w = 390
+    panel_h = 130  # Height adjusted for just the RANSAC signal
 
     # Cleaner side panel with more compact, high-signal information.
     overlay = frame.copy()
-    cv2.rectangle(overlay, (12, 12), (panel_w, h - 42), (16, 16, 16), -1)
+    cv2.rectangle(overlay, (12, 12), (panel_w, 12 + panel_h), (16, 16, 16), -1)
     cv2.addWeighted(overlay, 0.72, frame, 0.28, 0, frame)
 
-    live_state = reading.combined_state
-    if live_state != "NO_FACE" and not analysis_ready:
-        live_state = "ANALYZING"
-
     y = 42
-    _put(frame, "POSTURE CHECK", y, _C["WHITE"], 0.82, x=28, thickness=2); y += 28
-
-    if reading.combined_state == "NO_FACE":
-        subtitle = "Waiting for your face in frame"
-        subtitle_color = _C["GRAY"]
-    elif not analysis_ready:
-        subtitle = f"Analyzing posture... live in {analysis_left_s:.1f}s"
-        subtitle_color = _C["ANALYZING"]
-    else:
-        subtitle = "Live posture feedback"
-        subtitle_color = _C["GOOD"]
-    _put(frame, subtitle, y, subtitle_color, 0.54, x=28); y += 26
-
-    badge_c = _C.get(live_state, _C["GRAY"])
-    cv2.rectangle(frame, (28, y - 6), (panel_w - 22, y + 30), badge_c, -1)
-    cv2.putText(
-        frame, f"  {live_state}", (28, y + 21),
-        cv2.FONT_HERSHEY_SIMPLEX, 0.84, (10, 10, 10), 2, cv2.LINE_AA,
-    )
-    y += 50
-
-    # ── Assumed neck angle ────────────────────────────────────────────────
-    _put(frame, "Assumed neck angle", y, _C["DIM"], 0.56, x=28); y += 26
-    angle_state = _C.get(reading.pitch_state, _C["WHITE"])
-    _put(frame, f"{reading.assumed_angle_deg:5.1f}°", y, angle_state, 1.10, x=28, thickness=2); y += 30
-
-    if reading.assumed_angle_offset_deg < -0.8:
-        angle_hint = f"90° - {abs(reading.assumed_angle_offset_deg):.1f}°  looking down"
-    elif reading.assumed_angle_offset_deg > 0.8:
-        angle_hint = f"90° + {abs(reading.assumed_angle_offset_deg):.1f}°  looking up/back"
-    else:
-        angle_hint = "90° baseline  neutral"
-    _put(frame, angle_hint, y, _C["WHITE"], 0.54, x=28); y += 34
 
     # ── RANSAC posture signal ─────────────────────────────────────────────
     _put(frame, "RANSAC posture signal", y, _C["DIM"], 0.56, x=28); y += 18
@@ -576,49 +540,7 @@ def _draw_overlay(
         bar_color if reading.combined_state != "NO_FACE" else _C["GRAY"],
         0.54,
         x=28,
-    ); y += 34
-
-    # ── Compact live diagnostics ──────────────────────────────────────────
-    _put(frame, "Live details", y, _C["DIM"], 0.56, x=28); y += 22
-    _put(frame, f"Pitch delta {reading.signed_pitch_delta_deg:+5.1f}°", y, _C.get(reading.pitch_state, _C["WHITE"]), x=28)
-    _put(frame, f"Yaw delta {reading.yaw_delta_deg:+5.1f}°", y, _C.get(reading.yaw_state, _C["WHITE"]), x=210); y += 24
-    _put(frame, f"Confidence {reading.confidence:0.2f}", y, _C["WHITE"], x=28)
-    _put(frame, f"Reproj {reading.head_pose.reprojection_err:0.1f}px", y, _C["WHITE"], x=190); y += 24
-    _put(frame, f"Phone tilt {phone_pitch:+5.1f}°", y, _C["YELLOW"], x=28)
-    _put(frame, f"FPS {fps:0.1f}", y, _C["GRAY"], x=230); y += 34
-
-    # ── Calibration status ────────────────────────────────────────────────
-    if calibrating:
-        left = max(0.0, CALIBRATION_DURATION_S - calib_elapsed)
-        _put(frame,
-             f"Calibrating neutral posture... {left:.1f}s left",
-             y, _C["YELLOW"], thickness=2, x=28); y += 22
-    elif calibrated:
-        _put(frame, "Calibrated baseline ready", y, _C["GOOD"], x=28); y += 22
-    else:
-        _put(frame, "Optional: press C to capture a neutral baseline", y, _C["MODERATE"], x=28); y += 22
-
-    # Controls bar at bottom
-    cv2.rectangle(frame, (0, h - 30), (w, h), (25, 25, 25), -1)
-    _put(frame,
-         "W/S: phone tilt   C: calibrate   R: reset   Q: quit",
-         h - 9, _C["GRAY"], 0.50)
-
-    if reading.combined_state != "NO_FACE" and not analysis_ready:
-        banner_x1, banner_y1 = w // 2 - 190, 18
-        banner_x2, banner_y2 = w // 2 + 190, 56
-        cv2.rectangle(frame, (banner_x1, banner_y1), (banner_x2, banner_y2), (22, 22, 22), -1)
-        cv2.rectangle(frame, (banner_x1, banner_y1), (banner_x2, banner_y2), _C["ANALYZING"], 2)
-        cv2.putText(
-            frame,
-            "Analyzing posture, hold still...",
-            (banner_x1 + 18, banner_y1 + 26),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.68,
-            _C["WHITE"],
-            2,
-            cv2.LINE_AA,
-        )
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
