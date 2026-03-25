@@ -94,10 +94,25 @@ if (btnBackSetup) {
 
 let expGyroEnabled = false;
 let pitchBuffer = [];
+let poorStartTime = null;
+let lastAlertTime = null;
+let currentAx = 0, currentAy = 9.81, currentAz = 0;
+const GRAVITY = 9.81;
+const MOTION_SPIKE_THRESHOLD = 3.0;
+const SUSTAINED_POOR_SECONDS = 120.0;
 
 function enableExperimentGyro() {
     if (expGyroEnabled) return;
     expGyroEnabled = true;
+
+    window.addEventListener('devicemotion', (e) => {
+        if (!experimentScreen.classList.contains('active')) return;
+        if (e.accelerationIncludingGravity) {
+            currentAx = e.accelerationIncludingGravity.x || 0;
+            currentAy = e.accelerationIncludingGravity.y || 9.81;
+            currentAz = e.accelerationIncludingGravity.z || 0;
+        }
+    });
     
     window.addEventListener('deviceorientation', (e) => {
         if (!experimentScreen.classList.contains('active')) return;
@@ -111,49 +126,94 @@ function enableExperimentGyro() {
             document.getElementById('exp-metric-gamma').innerText = `${gamma !== null ? gamma.toFixed(1) : 0}°`;
             document.getElementById('exp-metric-alpha').innerText = `${alpha !== null ? alpha.toFixed(1) : 0}°`;
             
-            // Base pitch (Tilt from upright vertical)
+            // --- FULL NECKGUARD ALGORITHM IMPLEMENTATION ---
+
+            // 1. Motion Spike Detection
+            let magnitude = Math.sqrt(currentAx**2 + currentAy**2 + currentAz**2);
+            let motion_noise = Math.abs(magnitude - GRAVITY);
+            let in_motion = motion_noise > MOTION_SPIKE_THRESHOLD;
+            document.getElementById('exp-metric-motion').innerText = `${motion_noise.toFixed(2)}`;
+
+            // 2. Base Pitch (Tilt from upright vertical)
             let raw_pitch = 90 - beta;
             if (raw_pitch < 0) raw_pitch = Math.abs(raw_pitch);
             if (beta < 0) raw_pitch = 90 + Math.abs(beta);
             raw_pitch = Math.min(90, Math.max(0, raw_pitch));
             
-            // --- NECKGUARD ALGORITHM IMPLEMENTATION ---
-            
-            // 1. Temporal Smoothing (Rolling Average over 10 ticks to eliminate jitter)
+            // 3. Temporal Smoothing (Rolling Average over 10 ticks)
             pitchBuffer.push(raw_pitch);
             if (pitchBuffer.length > 10) pitchBuffer.shift();
             let smooth_pitch = pitchBuffer.reduce((a, b) => a + b) / pitchBuffer.length;
-            
             document.getElementById('exp-metric-tilt').innerText = `${smooth_pitch.toFixed(1)}°`;
 
-            // 2. Map phone pitch to neck flexion (Hansraj 2014 study multiplier)
+            // 4. Map pitch to Neck Flexion
             const NECK_SCALE = 0.82;
             let neck_deg = smooth_pitch * NECK_SCALE;
-            
             let neckMetricEl = document.getElementById('exp-metric-neck');
             if (neckMetricEl) neckMetricEl.innerText = `${neck_deg.toFixed(1)}°`;
             
+            // 5. Compute Confidence
+            let confidence = 1.0;
+            if (smooth_pitch > 60) confidence *= Math.max(0.1, 1.0 - (smooth_pitch - 60) / 30.0);
+            if (motion_noise > 1.0) confidence *= Math.max(0.2, 1.0 - motion_noise / 3.0);
+            document.getElementById('exp-metric-conf').innerText = `${Math.round(confidence * 100)}%`;
+
+            // 6. Classify Posture Status
             let expBanner = document.getElementById('exp-status-banner');
             let expFeedback = document.getElementById('exp-feedback');
             
-            // 3. Classify Posture Status
-            if (smooth_pitch > 75.0) {
-                // Phone is likely flat on desk
+            let is_active = smooth_pitch < 75.0;
+            let status_enum = "UNKNOWN";
+
+            if (in_motion || motion_noise > 4.0) {
+                status_enum = "UNKNOWN";
+            } else if (!is_active) {
+                status_enum = "IDLE";
+            } else if (neck_deg < 15.0) {
+                status_enum = "GOOD";
+            } else if (neck_deg < 35.0) {
+                status_enum = "MODERATE";
+            } else {
+                status_enum = "POOR";
+            }
+
+            // 7. Sustained Poor Alert Engine
+            let now = Date.now() / 1000.0;
+            let timeInPoor = 0;
+            if (status_enum === "POOR") {
+                if (poorStartTime === null) poorStartTime = now;
+                timeInPoor = Math.floor(now - poorStartTime);
+                if (timeInPoor >= SUSTAINED_POOR_SECONDS) {
+                    if (lastAlertTime === null || now - lastAlertTime > 300.0) {
+                        lastAlertTime = now;
+                        alert("POSTURE ALERT! You have had bad posture for 2 straight minutes."); // Native alert popup
+                    }
+                }
+            } else {
+                poorStartTime = null;
+            }
+
+            // 8. Update UI
+            if (status_enum === "UNKNOWN") {
+                expBanner.innerText = "MOTION DETECTED";
+                expBanner.className = `status-banner status-loading`;
+                expFeedback.innerText = "High motion noise. Walking? Skipping metric.";
+            } else if (status_enum === "IDLE") {
                 expBanner.innerText = "IDLE (PHONE FLAT)";
                 expBanner.className = `status-banner status-loading`;
                 expFeedback.innerText = "Phone is resting. Tracking paused.";
-            } else if (neck_deg < 15.0) {
+            } else if (status_enum === "GOOD") {
                 expBanner.innerText = "GOOD";
                 expBanner.className = `status-banner status-good`;
-                expFeedback.innerText = "Safe neck flexion. Great job!";
-            } else if (neck_deg < 35.0) {
+                expFeedback.innerText = `Great posture! Confidence: ${Math.round(confidence * 100)}%`;
+            } else if (status_enum === "MODERATE") {
                 expBanner.innerText = "MODERATE";
                 expBanner.className = `status-banner status-moderate`;
-                expFeedback.innerText = "Slightly bending your neck. Bring the phone higher.";
-            } else {
+                expFeedback.innerText = `Slight forward bend. Confidence: ${Math.round(confidence * 100)}%`;
+            } else if (status_enum === "POOR") {
                 expBanner.innerText = "POOR (BAD)";
                 expBanner.className = `status-banner status-risk`;
-                expFeedback.innerText = "Text Neck Detected! Critical strain on cervical spine.";
+                expFeedback.innerText = `Critical Strain. Sustained: ${timeInPoor}s / ${SUSTAINED_POOR_SECONDS}s`;
             }
         }
     });
