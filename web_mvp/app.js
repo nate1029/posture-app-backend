@@ -63,6 +63,17 @@ startBtn.addEventListener('click', async () => {
 
 if (btnExperiment) {
     btnExperiment.addEventListener('click', async () => {
+        const idInput = document.getElementById('experiment-id-input');
+        const errormsg = document.getElementById('experiment-error');
+        
+        if (idInput && idInput.value !== '6754') {
+            errormsg.style.display = 'block';
+            setTimeout(() => errormsg.style.display = 'none', 2000);
+            return;
+        }
+        
+        if(idInput) idInput.value = ''; // clear upon success
+
         setupScreen.classList.remove('active');
         experimentScreen.classList.add('active');
 
