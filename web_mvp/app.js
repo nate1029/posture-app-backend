@@ -93,6 +93,8 @@ if (btnBackSetup) {
 }
 
 let expGyroEnabled = false;
+let pitchBuffer = [];
+
 function enableExperimentGyro() {
     if (expGyroEnabled) return;
     expGyroEnabled = true;
@@ -109,39 +111,50 @@ function enableExperimentGyro() {
             document.getElementById('exp-metric-gamma').innerText = `${gamma !== null ? gamma.toFixed(1) : 0}°`;
             document.getElementById('exp-metric-alpha').innerText = `${alpha !== null ? alpha.toFixed(1) : 0}°`;
             
-            // Heuristic calculation
-            let tilt = 90 - beta;
-            if (tilt < 0) tilt = Math.abs(tilt);
-            if (beta < 0) tilt = 90 + Math.abs(beta);
-            tilt = Math.min(90, Math.max(0, tilt));
+            // Base pitch (Tilt from upright vertical)
+            let raw_pitch = 90 - beta;
+            if (raw_pitch < 0) raw_pitch = Math.abs(raw_pitch);
+            if (beta < 0) raw_pitch = 90 + Math.abs(beta);
+            raw_pitch = Math.min(90, Math.max(0, raw_pitch));
             
-            document.getElementById('exp-metric-tilt').innerText = `${tilt.toFixed(1)}°`;
+            // --- NECKGUARD ALGORITHM IMPLEMENTATION ---
             
-            let status = "Good";
-            let type = "good";
-            let feedback = "Posture looks healthy.";
+            // 1. Temporal Smoothing (Rolling Average over 10 ticks to eliminate jitter)
+            pitchBuffer.push(raw_pitch);
+            if (pitchBuffer.length > 10) pitchBuffer.shift();
+            let smooth_pitch = pitchBuffer.reduce((a, b) => a + b) / pitchBuffer.length;
             
-            if (tilt < 20) {
-                status = "Excellent";
-                feedback = "Phone is eye-level. Great job!";
-            } else if (tilt < 45) {
-                status = "Fair";
-                feedback = "You are looking down slightly. Try raising the phone.";
-                type = "moderate";
-            } else if (tilt < 70) {
-                status = "Poor";
-                feedback = "Text Neck detected! You are hunching over. Raise your phone.";
-                type = "risk";
+            document.getElementById('exp-metric-tilt').innerText = `${smooth_pitch.toFixed(1)}°`;
+
+            // 2. Map phone pitch to neck flexion (Hansraj 2014 study multiplier)
+            const NECK_SCALE = 0.82;
+            let neck_deg = smooth_pitch * NECK_SCALE;
+            
+            let neckMetricEl = document.getElementById('exp-metric-neck');
+            if (neckMetricEl) neckMetricEl.innerText = `${neck_deg.toFixed(1)}°`;
+            
+            let expBanner = document.getElementById('exp-status-banner');
+            let expFeedback = document.getElementById('exp-feedback');
+            
+            // 3. Classify Posture Status
+            if (smooth_pitch > 75.0) {
+                // Phone is likely flat on desk
+                expBanner.innerText = "IDLE (PHONE FLAT)";
+                expBanner.className = `status-banner status-loading`;
+                expFeedback.innerText = "Phone is resting. Tracking paused.";
+            } else if (neck_deg < 15.0) {
+                expBanner.innerText = "GOOD";
+                expBanner.className = `status-banner status-good`;
+                expFeedback.innerText = "Safe neck flexion. Great job!";
+            } else if (neck_deg < 35.0) {
+                expBanner.innerText = "MODERATE";
+                expBanner.className = `status-banner status-moderate`;
+                expFeedback.innerText = "Slightly bending your neck. Bring the phone higher.";
             } else {
-                status = "Severe";
-                feedback = "Dangerous neck angle! Your spine is under extreme pressure.";
-                type = "risk";
+                expBanner.innerText = "POOR (BAD)";
+                expBanner.className = `status-banner status-risk`;
+                expFeedback.innerText = "Text Neck Detected! Critical strain on cervical spine.";
             }
-            
-            const expBanner = document.getElementById('exp-status-banner');
-            expBanner.innerText = status;
-            expBanner.className = `status-banner status-${type}`;
-            document.getElementById('exp-feedback').innerText = feedback;
         }
     });
 }
