@@ -13,6 +13,10 @@ const btn2d = document.getElementById('btn-2d');
 const v3d = document.getElementById('view-3d');
 const v2d = document.getElementById('view-2d');
 
+const btnExperiment = document.getElementById('btn-experiment');
+const experimentScreen = document.getElementById('experiment-screen');
+const btnBackSetup = document.getElementById('btn-back-setup');
+
 // Engine State
 let currentMode = '3D';
 let faceLandmarker = null;
@@ -56,6 +60,80 @@ startBtn.addEventListener('click', async () => {
     await initMediaPipe();
     requestAnimationFrame(renderLoop);
 });
+
+if (btnExperiment) {
+    btnExperiment.addEventListener('click', async () => {
+        setupScreen.classList.remove('active');
+        experimentScreen.classList.add('active');
+
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            try {
+                if (await DeviceOrientationEvent.requestPermission() === 'granted') enableExperimentGyro();
+            } catch(e) { console.warn(e); }
+        } else enableExperimentGyro();
+    });
+}
+
+if (btnBackSetup) {
+    btnBackSetup.addEventListener('click', () => {
+        experimentScreen.classList.remove('active');
+        setupScreen.classList.add('active');
+    });
+}
+
+let expGyroEnabled = false;
+function enableExperimentGyro() {
+    if (expGyroEnabled) return;
+    expGyroEnabled = true;
+    
+    window.addEventListener('deviceorientation', (e) => {
+        if (!experimentScreen.classList.contains('active')) return;
+        
+        if (e.beta !== null) {
+            const beta = e.beta; 
+            const gamma = e.gamma; 
+            const alpha = e.alpha; 
+            
+            document.getElementById('exp-metric-beta').innerText = `${beta.toFixed(1)}°`;
+            document.getElementById('exp-metric-gamma').innerText = `${gamma !== null ? gamma.toFixed(1) : 0}°`;
+            document.getElementById('exp-metric-alpha').innerText = `${alpha !== null ? alpha.toFixed(1) : 0}°`;
+            
+            // Heuristic calculation
+            let tilt = 90 - beta;
+            if (tilt < 0) tilt = Math.abs(tilt);
+            if (beta < 0) tilt = 90 + Math.abs(beta);
+            tilt = Math.min(90, Math.max(0, tilt));
+            
+            document.getElementById('exp-metric-tilt').innerText = `${tilt.toFixed(1)}°`;
+            
+            let status = "Good";
+            let type = "good";
+            let feedback = "Posture looks healthy.";
+            
+            if (tilt < 20) {
+                status = "Excellent";
+                feedback = "Phone is eye-level. Great job!";
+            } else if (tilt < 45) {
+                status = "Fair";
+                feedback = "You are looking down slightly. Try raising the phone.";
+                type = "moderate";
+            } else if (tilt < 70) {
+                status = "Poor";
+                feedback = "Text Neck detected! You are hunching over. Raise your phone.";
+                type = "risk";
+            } else {
+                status = "Severe";
+                feedback = "Dangerous neck angle! Your spine is under extreme pressure.";
+                type = "risk";
+            }
+            
+            const expBanner = document.getElementById('exp-status-banner');
+            expBanner.innerText = status;
+            expBanner.className = `status-banner status-${type}`;
+            document.getElementById('exp-feedback').innerText = feedback;
+        }
+    });
+}
 
 function enableGyro() {
     window.addEventListener('deviceorientation', (e) => {

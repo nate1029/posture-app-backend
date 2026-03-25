@@ -13,6 +13,9 @@
             <h1 id="loading-msg">Posture MVP Protocol</h1>
             <p>Ready for Final Mobile Testing.</p>
             <button id="start-btn">Grant Native Access</button>
+            <div style="margin-top: 30px;">
+                <button id="btn-experiment" style="background:#333; color:#aaa; font-size:12px; padding:10px 16px; border: 1px solid #555;">🧪 Developer Experiments Zone</button>
+            </div>
         </div>
     </div>
 
@@ -69,6 +72,38 @@
                  
                  <div id="alerts-list" class="alerts-box"></div>
             </div>
+        </div>
+    </div>
+
+    <!-- EXPERIMENTS ZONE SCREEN -->
+    <div id="experiment-screen" class="screen">
+        <div class="glass-card start-card" style="width: 90%; max-width: 400px; text-align: left;">
+            <h2 style="margin-bottom: 20px; text-align:center;">🧪 Sensor Test Zone</h2>
+            
+            <div class="metrics-row">
+                <span>📱 Pitch (Beta):</span>
+                <span id="exp-metric-beta" style="font-family: monospace;">0.0°</span>
+            </div>
+            <div class="metrics-row">
+                <span>📱 Roll (Gamma):</span>
+                <span id="exp-metric-gamma" style="font-family: monospace;">0.0°</span>
+            </div>
+            <div class="metrics-row">
+                <span>📱 Yaw (Alpha):</span>
+                <span id="exp-metric-alpha" style="font-family: monospace;">0.0°</span>
+            </div>
+            
+            <hr>
+            
+            <div class="metrics-row highlight">
+                <span>📐 Est. Phone Tilt:</span>
+                <span id="exp-metric-tilt" style="font-family: monospace; color: #00E0FF;">0.0°</span>
+            </div>
+            
+            <div id="exp-status-banner" class="status-banner status-loading" style="margin-top: 20px;">WAITING FOR SENSORS</div>
+            <p id="exp-feedback" style="font-size: 13px; color: #BBB; text-align:center; min-height: 40px; margin-top: 10px;">Move phone to test tilt heuristics...</p>
+            
+            <button id="btn-back-setup" style="width: 100%; background: #222; border: 1px solid #555; margin-top:20px;">Return to Setup</button>
         </div>
     </div>
 
