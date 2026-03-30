@@ -8,30 +8,10 @@ const video = document.getElementById('webcam');
 const canvas = document.getElementById('output_canvas');
 const ctx = canvas.getContext('2d');
 
-const btn3d = document.getElementById('btn-3d');
-const btn2d = document.getElementById('btn-2d');
-const v3d = document.getElementById('view-3d');
-const v2d = document.getElementById('view-2d');
-
-const btnExperiment = document.getElementById('btn-experiment');
-const experimentScreen = document.getElementById('experiment-screen');
-const btnBackSetup = document.getElementById('btn-back-setup');
-
 // Engine State
-let currentMode = '3D';
 let faceLandmarker = null;
 let lastVideoTime = -1;
 let gyroPitch = 90;
-
-let baselines = { locked: false, vr: [], size: [], gyro: 90 };
-
-window.setMode = (mode) => {
-    currentMode = mode;
-    btn3d.classList.toggle('active', mode === '3D');
-    btn2d.classList.toggle('active', mode === '2D');
-    v3d.style.display = mode === '3D' ? 'block' : 'none';
-    v2d.style.display = mode === '2D' ? 'block' : 'none';
-};
 
 function updateStatus(text, type, alerts = []) {
     const banner = document.getElementById('status-banner');
@@ -60,6 +40,10 @@ startBtn.addEventListener('click', async () => {
     await initMediaPipe();
     requestAnimationFrame(renderLoop);
 });
+
+const btnExperiment = document.getElementById('btn-experiment');
+const experimentScreen = document.getElementById('experiment-screen');
+const btnBackSetup = document.getElementById('btn-back-setup');
 
 if (btnExperiment) {
     btnExperiment.addEventListener('click', async () => {
@@ -262,8 +246,7 @@ async function renderLoop() {
                 ctx.fillRect(lm[i].x * canvas.width, lm[i].y * canvas.height, 2, 2);
             }
 
-            if (currentMode === '3D') process3DPhysics(results.facialTransformationMatrixes[0].data);
-            else process2DHeuristics(lm);
+            process3DPhysics(results.facialTransformationMatrixes[0].data);
         } else {
             updateStatus("NO FACE DETECTED", "loading");
         }
@@ -287,41 +270,4 @@ function process3DPhysics(matrix) {
     else updateStatus("GOOD POSTURE", "good");
 }
 
-function process2DHeuristics(lm) {
-    const h = canvas.height; const w = canvas.width;
-    const vr = (lm[152].y * h - lm[1].y * h) / Math.max(1, lm[1].y * h - lm[10].y * h);
-    const sizePx = Math.hypot((lm[263].x - lm[33].x) * w, (lm[263].y - lm[33].y) * h);
 
-    if (!baselines.locked) {
-        baselines.vr.push(vr); baselines.size.push(sizePx);
-        let pct = Math.floor((baselines.vr.length/30)*100);
-        document.getElementById('calib-status').innerText = `CALIBRATING BASELINE: ${pct}% - PLEASE SIT STRAIGHT`;
-        updateStatus("CALIBRATING...", "loading");
-        
-        if (baselines.vr.length >= 30) {
-            baselines.locked = true;
-            baselines.vr_mean = baselines.vr.reduce((a,b)=>a+b)/30;
-            baselines.size_mean = baselines.size.reduce((a,b)=>a+b)/30;
-            baselines.gyro = gyroPitch; 
-            document.getElementById('calib-status').innerText = "Baseline Locked Automatically.";
-        }
-        return;
-    }
-    
-    let adjusted_VR = vr + ((gyroPitch - baselines.gyro) * 0.005); 
-    let vrDelta = adjusted_VR - baselines.vr_mean;
-    let zoomMult = sizePx / baselines.size_mean;
-
-    document.getElementById('metric-vr').innerText = adjusted_VR.toFixed(2);
-    document.getElementById('metric-vr-delta').innerText = `${vrDelta > 0 ? '+':''}${vrDelta.toFixed(2)}`;
-    document.getElementById('metric-zoom').innerText = `${sizePx.toFixed(0)}px (${zoomMult.toFixed(2)}x)`;
-
-    let alerts = [];
-    if (vrDelta < -0.15) alerts.push("Looking Down (Harsh Drop)");
-    else if (vrDelta < -0.06) alerts.push("Looking Down (Mild)");
-    if (zoomMult > 1.15) alerts.push("Turtle Neck (Leaning into Screen)");
-
-    if (alerts.length >= 2 || alerts.join('').includes('Harsh')) updateStatus("HIGH RISK", "risk", alerts);
-    else if (alerts.length === 1) updateStatus("MODERATE", "moderate", alerts);
-    else updateStatus("GOOD POSTURE", "good", []);
-}

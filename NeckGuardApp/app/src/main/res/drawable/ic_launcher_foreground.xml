@@ -1,0 +1,23 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Centered within 66x66 safe zone (21,21 to 87,87) -->
+    <!-- Head -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,25m-8,0a8,8 0,1 1,16 0a8,8 0,1 1,-16 0" />
+    <!-- Neck -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M50,34h8v8h-8z" />
+    <!-- Shield / Guard -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M35,45h38v15c0,10 -19,18 -19,18s-19,-8 -19,-18z" />
+    <!-- Camera/Sensor Dot -->
+    <path
+        android:fillColor="#00C853"
+        android:pathData="M54,54m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0" />
+</vector>
