@@ -1,0 +1,494 @@
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=Syne:wght@500;700&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: var(--color-background-tertiary);
+    --card: var(--color-background-primary);
+    --border: var(--color-border-tertiary);
+    --text: var(--color-text-primary);
+    --muted: var(--color-text-secondary);
+    --hint: var(--color-text-tertiary);
+    --accent: #1D9E75;
+    --accent-light: #E1F5EE;
+    --warn: #BA7517;
+    --warn-light: #FAEEDA;
+    --danger: #E24B4A;
+    --danger-light: #FCEBEB;
+    --phone-w: 200px;
+    --phone-h: 400px;
+  }
+  .wrapper { padding: 1.5rem 0; font-family: 'DM Sans', sans-serif; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 2rem 1.5rem; }
+  .screen-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; }
+  .screen-label { font-size: 11px; font-weight: 500; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+  .phone {
+    width: var(--phone-w);
+    height: var(--phone-h);
+    background: var(--card);
+    border-radius: 28px;
+    border: 1.5px solid var(--border);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .notch {
+    width: 60px; height: 14px;
+    background: var(--color-background-secondary);
+    border-radius: 0 0 10px 10px;
+    margin: 0 auto;
+    flex-shrink: 0;
+    border: 1.5px solid var(--border);
+    border-top: none;
+  }
+  .screen-body { flex: 1; overflow: hidden; display: flex; flex-direction: column; padding: 10px 12px 12px; gap: 7px; }
+  .syne { font-family: 'Syne', sans-serif; }
+
+  /* Screen 1 — Splash */
+  .splash { background: #04342C; justify-content: center; align-items: center; gap: 8px; }
+  .logo-mark { width: 48px; height: 48px; border-radius: 14px; background: #1D9E75; display: flex; align-items: center; justify-content: center; }
+  .logo-inner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid #fff; position: relative; }
+  .logo-inner::after { content:''; position:absolute; width:10px; height:10px; background:#fff; border-radius:50%; top:50%; left:50%; transform:translate(-50%,-50%); }
+  .splash-title { color: #fff; font-size: 18px; font-family:'Syne',sans-serif; font-weight:700; }
+  .splash-sub { color: #9FE1CB; font-size: 10px; text-align:center; line-height:1.5; }
+  .splash-line { width: 32px; height: 2px; background: #1D9E75; border-radius: 2px; margin-top: 4px; }
+
+  /* Screen 2 — Awareness */
+  .stat-pill { background: var(--accent-light); color: #085041; font-size: 9px; font-weight:500; padding: 3px 8px; border-radius: 20px; display:inline-block; }
+  .awareness-img { width:100%; height: 80px; background: linear-gradient(135deg, #E1F5EE 0%, #9FE1CB 100%); border-radius: var(--border-radius-md); display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
+  .neck-illus { width:30px; height:50px; position:relative; display:flex; flex-direction:column; align-items:center; }
+  .head-circle { width:22px; height:22px; border-radius:50%; background:#0F6E56; }
+  .neck-rect { width:10px; height:18px; background:#1D9E75; border-radius:3px; margin-top:-2px; }
+  .spine-dots { display:flex; flex-direction:column; gap:3px; align-items:center; margin-top:3px; }
+  .spine-dot { width:4px; height:4px; border-radius:50%; background:#5DCAA5; }
+  .forward-head { transform: rotate(15deg) translateX(6px); }
+
+  /* Screen 3 — Questionnaire */
+  .q-step { display:flex; align-items:center; gap:6px; }
+  .q-num { width:16px; height:16px; border-radius:50%; background: var(--accent); color:#fff; font-size:8px; font-weight:500; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .q-num.done { background: #E1F5EE; color: #0F6E56; }
+  .q-num.active { background: var(--accent); }
+  .q-num.inactive { background: var(--color-background-secondary); color: var(--muted); }
+  .q-text { font-size: 9px; color: var(--text); }
+  .q-options { display:flex; gap:4px; flex-wrap:wrap; }
+  .q-chip { font-size: 8px; padding: 3px 7px; border-radius: 20px; border: 1px solid var(--border); color: var(--muted); }
+  .q-chip.sel { background: var(--accent-light); border-color: var(--accent); color: #085041; }
+  .progress-bar-wrap { height: 3px; background: var(--color-background-secondary); border-radius: 2px; width:100%; }
+  .progress-bar-fill { height: 3px; background: var(--accent); border-radius: 2px; width: 50%; }
+
+  /* Screen 4 — Permissions */
+  .perm-icon { width:32px; height:32px; border-radius: var(--border-radius-md); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .perm-row { display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom: 0.5px solid var(--border); }
+  .perm-row:last-child { border-bottom:none; }
+  .trust-badge { background: var(--accent-light); border-radius: var(--border-radius-md); padding: 6px 8px; display:flex; align-items:center; gap:5px; }
+
+  /* Screen 5 — Dashboard */
+  .greeting-row { display:flex; justify-content:space-between; align-items:flex-start; }
+  .avatar { width:24px; height:24px; border-radius:50%; background: var(--accent-light); display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:500; color:#0F6E56; }
+  .status-card { border-radius: var(--border-radius-lg); padding: 10px; position:relative; overflow:hidden; }
+  .status-good { background: var(--accent-light); }
+  .status-label { font-size: 8px; font-weight:500; color:#085041; letter-spacing:0.05em; text-transform:uppercase; }
+  .status-value { font-size: 15px; font-family:'Syne',sans-serif; font-weight:700; color:#04342C; line-height:1.2; margin-top:2px; }
+  .monster-area { position:absolute; right:8px; bottom:-4px; opacity:0.15; }
+  .monster-svg { width:40px; height:40px; }
+  .action-btn { background: var(--accent); color:#fff; border-radius: var(--border-radius-md); padding: 8px 10px; font-size: 9px; font-weight:500; display:flex; align-items:center; justify-content:space-between; }
+  .mini-cards { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+  .mini-card { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding:6px 8px; }
+  .mini-card-label { font-size:7px; color:var(--muted); }
+  .mini-card-val { font-size:11px; font-weight:500; color:var(--text); margin-top:1px; }
+  .streak-badge { background: var(--warn-light); border-radius: var(--border-radius-md); padding:5px 8px; display:flex; align-items:center; justify-content:space-between; }
+  .nav-bar { height:44px; background:var(--card); border-top:0.5px solid var(--border); display:flex; align-items:center; justify-content:space-around; padding: 0 8px; flex-shrink:0; }
+  .nav-item { display:flex; flex-direction:column; align-items:center; gap:2px; }
+  .nav-dot { width:16px; height:3px; border-radius:2px; }
+  .nav-lbl { font-size:7px; color:var(--muted); }
+  .nav-item.active .nav-lbl { color: var(--accent); }
+  .nav-icon { width:16px; height:16px; }
+
+  /* Screen 6 — Progress */
+  .chart-area { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding:8px; }
+  .chart-bars { display:flex; align-items:flex-end; gap:5px; height:50px; }
+  .bar { border-radius:3px 3px 0 0; flex:1; }
+  .week-labels { display:flex; gap:5px; margin-top:3px; }
+  .week-lbl { flex:1; font-size:7px; color:var(--muted); text-align:center; }
+  .insight-row { display:flex; align-items:center; gap:6px; padding:5px 0; border-bottom:0.5px solid var(--border); }
+  .insight-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+
+  /* Screen 7 — Exercises */
+  .ex-card { border:0.5px solid var(--border); border-radius: var(--border-radius-md); padding:8px; display:flex; align-items:center; gap:8px; }
+  .ex-thumb { width:32px; height:32px; border-radius: var(--border-radius-md); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .diff-pill { font-size:7px; padding:1px 5px; border-radius:10px; }
+  .diff-easy { background:#EAF3DE; color:#3B6D11; }
+  .diff-med { background:var(--warn-light); color:#633806; }
+
+  /* Screen 8 — Rewards */
+  .badge-grid { display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; }
+  .badge-item { display:flex; flex-direction:column; align-items:center; gap:3px; }
+  .badge-icon { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+  .badge-unlocked { opacity:1; }
+  .badge-locked { opacity:0.35; }
+  .badge-name { font-size:7px; color:var(--muted); text-align:center; }
+  .level-bar-wrap { height:6px; background:var(--color-background-secondary); border-radius:3px; width:100%; }
+  .level-bar-fill { height:6px; background: var(--accent); border-radius:3px; }
+
+  /* Screen 9 — Settings */
+  .setting-row { display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:0.5px solid var(--border); }
+  .setting-row:last-child { border-bottom:none; }
+  .toggle { width:24px; height:14px; border-radius:7px; background: var(--accent); position:relative; }
+  .toggle::after { content:''; position:absolute; width:10px; height:10px; background:#fff; border-radius:50%; top:2px; right:2px; }
+  .toggle.off { background: var(--color-background-secondary); }
+  .toggle.off::after { right:auto; left:2px; }
+  .vibe-selector { display:flex; gap:4px; flex-wrap:wrap; }
+  .vibe-chip { font-size:7px; padding:2px 6px; border-radius:10px; border:1px solid var(--border); color:var(--muted); }
+  .vibe-chip.active { background:var(--accent-light); border-color:var(--accent); color:#085041; }
+</style>
+
+<div class="wrapper">
+<div class="grid">
+
+  <!-- S1: Splash -->
+  <div class="screen-wrap">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen-body splash">
+        <div class="logo-mark"><div class="logo-inner"></div></div>
+        <div class="splash-title syne">NeckGuard</div>
+        <div class="splash-sub">Your daily posture<br>companion</div>
+        <div class="splash-line"></div>
+      </div>
+    </div>
+    <div class="screen-label">1 · Splash</div>
+  </div>
+
+  <!-- S2: Awareness -->
+  <div class="screen-wrap">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen-body" style="gap:8px;">
+        <div class="stat-pill">8–9 hrs on screens daily</div>
+        <div style="font-size:13px; font-weight:500; font-family:'Syne',sans-serif; color:var(--text); line-height:1.3;">Your neck is paying the price.</div>
+        <div class="awareness-img">
+          <div class="neck-illus forward-head">
+            <div class="head-circle"></div>
+            <div class="neck-rect"></div>
+            <div class="spine-dots"><div class="spine-dot"></div><div class="spine-dot"></div><div class="spine-dot"></div></div>
+          </div>
+          <div style="position:absolute; right:16px; bottom:8px; font-size:8px; color:#0F6E56; font-weight:500;">forward head<br>posture</div>
+        </div>
+        <div style="font-size:9px; color:var(--muted); line-height:1.6;">Neck strain, forward head posture, and spinal discomfort are now part of daily life. Prevention starts with awareness.</div>
+        <div style="margin-top:auto; background:var(--accent); color:#fff; border-radius:var(--border-radius-md); padding:8px; text-align:center; font-size:9px; font-weight:500;">Let's get started</div>
+      </div>
+    </div>
+    <div class="screen-label">2 · Awareness</div>
+  </div>
+
+  <!-- S3: Questionnaire -->
+  <div class="screen-wrap">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen-body">
+        <div style="font-size:10px; font-weight:500; color:var(--text);">Help us personalise<br><span class="syne" style="font-size:13px;">your posture coach</span></div>
+        <div class="progress-bar-wrap"><div class="progress-bar-fill"></div></div>
+        <div style="font-size:8px; color:var(--muted);">Question 2 of 4</div>
+        <div style="height:0.5px; background:var(--border);"></div>
+        <div style="font-size:10px; font-weight:500; color:var(--text);">How often do you feel neck discomfort?</div>
+        <div class="q-options">
+          <div class="q-chip">Rarely</div>
+          <div class="q-chip sel">Sometimes</div>
+          <div class="q-chip">Often</div>
+          <div class="q-chip">Daily</div>
+        </div>
+        <div style="height:0.5px; background:var(--border);"></div>
+        <div style="font-size:8px; color:var(--muted); margin-top:2px;">Previous questions</div>
+        <div class="q-step"><div class="q-num done">1</div><div class="q-text">Age group: <b>25–34</b></div></div>
+        <div style="margin-top:auto; background:var(--accent); color:#fff; border-radius:var(--border-radius-md); padding:8px; text-align:center; font-size:9px; font-weight:500;">Next →</div>
+      </div>
+    </div>
+    <div class="screen-label">3 · Questionnaire</div>
+  </div>
+
+  <!-- S4: Permissions -->
+  <div class="screen-wrap">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen-body">
+        <div style="font-size:13px; font-weight:500; font-family:'Syne',sans-serif; color:var(--text); line-height:1.3;">Give us access to<br>protect your neck.</div>
+        <div class="perm-row">
+          <div class="perm-icon" style="background:#E6F1FB;">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="6" r="3" stroke="#378ADD" stroke-width="1.5"/><path d="M2 14c0-3.314 2.686-5 6-5s6 1.686 6 5" stroke="#378ADD" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <div style="flex:1;"><div style="font-size:9px; font-weight:500; color:var(--text);">Camera access</div><div style="font-size:8px; color:var(--muted);">Only active during posture scans</div></div>
+          <div style="font-size:8px; color:var(--accent); font-weight:500;">Allow</div>
+        </div>
+        <div class="perm-row">
+          <div class="perm-icon" style="background:#E1F5EE;">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="4" y="2" width="8" height="12" rx="2" stroke="#1D9E75" stroke-width="1.5"/><line x1="8" y1="11" x2="8" y2="11" stroke="#1D9E75" stroke-width="2" stroke-linecap="round"/></svg>
+          </div>
+          <div style="flex:1;"><div style="font-size:9px; font-weight:500; color:var(--text);">Motion sensors</div><div style="font-size:8px; color:var(--muted);">Background posture detection</div></div>
+          <div style="font-size:8px; color:var(--accent); font-weight:500;">Allow</div>
+        </div>
+        <div class="perm-row">
+          <div class="perm-icon" style="background:#FAEEDA;">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v4M8 10v4M2 8h4M10 8h4" stroke="#BA7517" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <div style="flex:1;"><div style="font-size:9px; font-weight:500; color:var(--text);">Notifications</div><div style="font-size:8px; color:var(--muted);">Timely posture reminders</div></div>
+          <div style="font-size:8px; color:var(--accent); font-weight:500;">Allow</div>
+        </div>
+        <div class="trust-badge">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1L1 3v4c0 2.5 2 4.5 5 5 3-0.5 5-2.5 5-5V3L6 1z" stroke="#0F6E56" stroke-width="1.2" fill="none"/></svg>
+          <div style="font-size:8px; color:#085041;">Your data stays on-device. Never sold or shared.</div>
+        </div>
+        <div style="margin-top:auto; background:var(--accent); color:#fff; border-radius:var(--border-radius-md); padding:8px; text-align:center; font-size:9px; font-weight:500;">Continue</div>
+      </div>
+    </div>
+    <div class="screen-label">4 · Permissions</div>
+  </div>
+
+  <!-- S5: Dashboard -->
+  <div class="screen-wrap">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen-body" style="padding-bottom:0; gap:6px;">
+        <div class="greeting-row">
+          <div>
+            <div style="font-size:8px; color:var(--muted);">Good morning</div>
+            <div style="font-size:12px; font-weight:500; font-family:'Syne',sans-serif; color:var(--text);">Nate</div>
+          </div>
+          <div class="avatar">N</div>
+        </div>
+        <div class="status-card status-good">
+          <div class="status-label">Posture status</div>
+          <div class="status-value">Feeling good</div>
+          <div style="font-size:8px; color:#0F6E56; margin-top:3px;">On track for 1h 40m</div>
+          <div class="monster-area">
+            <svg class="monster-svg" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="#04342C"/><circle cx="14" cy="17" r="3" fill="#1D9E75"/><circle cx="26" cy="17" r="3" fill="#1D9E75"/><path d="M14 26 Q20 22 26 26" stroke="#1D9E75" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+          </div>
+        </div>
+        <div class="action-btn">
+          <span>Check posture now</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4 8l4-4M8 4H5M8 4v3" stroke="white" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="streak-badge">
+          <div style="font-size:8px; color:#633806; font-weight:500;">2-day streak</div>
+          <div style="font-size:8px; color:#854F0B;">Next break in 18 min</div>
+        </div>
+        <div class="mini-cards">
+          <div class="mini-card"><div class="mini-card-label">Screen time</div><div class="mini-card-val">3h 20m</div></div>
+          <div class="mini-card"><div class="mini-card-label">Checks today</div><div class="mini-card-val">4 done</div></div>
+          <div class="mini-card"><div class="mini-card-label">Exercises</div><div class="mini-card-val">2 of 3</div></div>
+          <div class="mini-card"><div class="mini-card-label">Neck status</div><div class="mini-card-val" style="color:var(--accent); font-size:9px;">Low strain</div></div>
+        </div>
+      </div>
+      <div class="nav-bar">
+        <div class="nav-item active"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1" fill="#1D9E75"/><rect x="9" y="2" width="5" height="5" rx="1" fill="#1D9E75" opacity="0.4"/><rect x="2" y="9" width="5" height="5" rx="1" fill="#1D9E75" opacity="0.4"/><rect x="9" y="9" width="5" height="5" rx="1" fill="#1D9E75" opacity="0.4"/></svg><div class="nav-lbl" style="color:var(--accent);">Home</div></div>
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><polyline points="2,12 5,7 8,9 11,4 14,6" stroke="var(--muted)" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><div class="nav-lbl">Progress</div></div>
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M8 2v5M5 5h6M4 10c0 2 1.5 4 4 4s4-2 4-4" stroke="var(--muted)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg><div class="nav-lbl">Exercises</div></div>
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><polygon points="8,2 10,6 14,6.5 11,9.5 11.8,14 8,11.8 4.2,14 5,9.5 2,6.5 6,6" stroke="var(--muted)" stroke-width="1.2" fill="none" stroke-linejoin="round"/></svg><div class="nav-lbl">Rewards</div></div>
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="6" r="3" stroke="var(--muted)" stroke-width="1.2"/><path d="M3 14c0-2.761 2.239-4 5-4s5 1.239 5 4" stroke="var(--muted)" stroke-width="1.2" stroke-linecap="round"/></svg><div class="nav-lbl">Settings</div></div>
+      </div>
+    </div>
+    <div class="screen-label">5 · Dashboard</div>
+  </div>
+
+  <!-- S6: Progress -->
+  <div class="screen-wrap">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen-body" style="padding-bottom:0; gap:6px;">
+        <div style="font-size:12px; font-weight:500; font-family:'Syne',sans-serif; color:var(--text);">Your week's story</div>
+        <div style="font-size:9px; color:var(--muted); line-height:1.5;">You improved posture by 18% vs last week. Best day: Wednesday.</div>
+        <div class="chart-area">
+          <div style="font-size:7px; color:var(--muted); margin-bottom:5px;">Posture score · 7 days</div>
+          <div class="chart-bars">
+            <div class="bar" style="height:35%; background:#9FE1CB;"></div>
+            <div class="bar" style="height:55%; background:#9FE1CB;"></div>
+            <div class="bar" style="height:45%; background:#9FE1CB;"></div>
+            <div class="bar" style="height:80%; background:var(--accent);"></div>
+            <div class="bar" style="height:65%; background:#9FE1CB;"></div>
+            <div class="bar" style="height:75%; background:#9FE1CB;"></div>
+            <div class="bar" style="height:70%; background:var(--accent); opacity:0.7;"></div>
+          </div>
+          <div class="week-labels"><div class="week-lbl">M</div><div class="week-lbl">T</div><div class="week-lbl">W</div><div class="week-lbl" style="color:var(--accent);">T</div><div class="week-lbl">F</div><div class="week-lbl">S</div><div class="week-lbl">S</div></div>
+        </div>
+        <div style="font-size:9px; font-weight:500; color:var(--text);">Insights</div>
+        <div class="insight-row"><div class="insight-dot" style="background:var(--accent);"></div><div style="font-size:8px; color:var(--muted);">Neck discomfort improving this week</div></div>
+        <div class="insight-row"><div class="insight-dot" style="background:var(--warn);"></div><div style="font-size:8px; color:var(--muted);">Screen time highest on Tuesday</div></div>
+        <div class="insight-row"><div class="insight-dot" style="background:#378ADD;"></div><div style="font-size:8px; color:var(--muted);">Move phone slightly farther — consistent</div></div>
+        <div style="height:0.5px; background:var(--border);"></div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px; margin-top:2px;">
+          <div class="mini-card"><div class="mini-card-label">Avg posture score</div><div class="mini-card-val">74 / 100</div></div>
+          <div class="mini-card"><div class="mini-card-label">Breaks taken</div><div class="mini-card-val">17 this week</div></div>
+        </div>
+      </div>
+      <div class="nav-bar">
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1" fill="var(--muted)" opacity="0.5"/><rect x="9" y="2" width="5" height="5" rx="1" fill="var(--muted)" opacity="0.5"/><rect x="2" y="9" width="5" height="5" rx="1" fill="var(--muted)" opacity="0.5"/><rect x="9" y="9" width="5" height="5" rx="1" fill="var(--muted)" opacity="0.5"/></svg><div class="nav-lbl">Home</div></div>
+        <div class="nav-item active"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><polyline points="2,12 5,7 8,9 11,4 14,6" stroke="#1D9E75" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><div class="nav-lbl" style="color:var(--accent);">Progress</div></div>
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M8 2v5M5 5h6M4 10c0 2 1.5 4 4 4s4-2 4-4" stroke="var(--muted)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg><div class="nav-lbl">Exercises</div></div>
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><polygon points="8,2 10,6 14,6.5 11,9.5 11.8,14 8,11.8 4.2,14 5,9.5 2,6.5 6,6" stroke="var(--muted)" stroke-width="1.2" fill="none" stroke-linejoin="round"/></svg><div class="nav-lbl">Rewards</div></div>
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="6" r="3" stroke="var(--muted)" stroke-width="1.2"/><path d="M3 14c0-2.761 2.239-4 5-4s5 1.239 5 4" stroke="var(--muted)" stroke-width="1.2" stroke-linecap="round"/></svg><div class="nav-lbl">Settings</div></div>
+      </div>
+    </div>
+    <div class="screen-label">6 · Progress</div>
+  </div>
+
+  <!-- S7: Exercises -->
+  <div class="screen-wrap">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen-body" style="padding-bottom:0; gap:6px;">
+        <div style="font-size:12px; font-weight:500; font-family:'Syne',sans-serif; color:var(--text);">Do this in 2 min.</div>
+        <div style="font-size:8px; color:var(--muted);">3 exercises · 4 mins total</div>
+        <div class="ex-card">
+          <div class="ex-thumb" style="background:#E1F5EE;">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="5" r="3" stroke="#1D9E75" stroke-width="1.5"/><path d="M7 9c0 0-1 2-1 5h8c0-3-1-5-1-5" stroke="#1D9E75" stroke-width="1.5" stroke-linecap="round"/><path d="M8 14v4M12 14v4" stroke="#1D9E75" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <div style="flex:1;"><div style="font-size:9px; font-weight:500; color:var(--text);">Chin tuck</div><div style="font-size:8px; color:var(--muted);">30 sec · Beginner</div></div>
+          <div class="diff-pill diff-easy">Easy</div>
+        </div>
+        <div class="ex-card">
+          <div class="ex-thumb" style="background:#E6F1FB;">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="5" r="3" stroke="#378ADD" stroke-width="1.5"/><path d="M6 10 Q4 8 3 10" stroke="#378ADD" stroke-width="1.5" stroke-linecap="round"/><path d="M14 10 Q16 8 17 10" stroke="#378ADD" stroke-width="1.5" stroke-linecap="round"/><path d="M7 9h6v5H7z" stroke="#378ADD" stroke-width="1.5" rx="1"/></svg>
+          </div>
+          <div style="flex:1;"><div style="font-size:9px; font-weight:500; color:var(--text);">Shoulder shrug</div><div style="font-size:8px; color:var(--muted);">45 sec · Beginner</div></div>
+          <div class="diff-pill diff-easy">Easy</div>
+        </div>
+        <div class="ex-card">
+          <div class="ex-thumb" style="background:var(--warn-light);">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="5" r="3" stroke="#BA7517" stroke-width="1.5"/><path d="M7 9v6" stroke="#BA7517" stroke-width="1.5" stroke-linecap="round"/><path d="M13 9v6" stroke="#BA7517" stroke-width="1.5" stroke-linecap="round"/><path d="M7 12 Q10 14 13 12" stroke="#BA7517" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+          </div>
+          <div style="flex:1;"><div style="font-size:9px; font-weight:500; color:var(--text);">Upper trap stretch</div><div style="font-size:8px; color:var(--muted);">1 min · Intermediate</div></div>
+          <div class="diff-pill diff-med">Med</div>
+        </div>
+        <div class="ex-card" style="border:none; background:var(--color-background-secondary);">
+          <div class="ex-thumb" style="background:var(--color-background-primary);">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M6 10h8M10 6v8" stroke="var(--muted)" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <div style="flex:1;"><div style="font-size:9px; color:var(--muted);">2 more exercises</div><div style="font-size:8px; color:var(--hint);">Unlock with streak</div></div>
+        </div>
+        <div style="margin-top:auto; background:var(--accent); color:#fff; border-radius:var(--border-radius-md); padding:8px; text-align:center; font-size:9px; font-weight:500;">Start quick routine</div>
+      </div>
+      <div class="nav-bar">
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1" fill="var(--muted)" opacity="0.5"/><rect x="9" y="2" width="5" height="5" rx="1" fill="var(--muted)" opacity="0.5"/><rect x="2" y="9" width="5" height="5" rx="1" fill="var(--muted)" opacity="0.5"/><rect x="9" y="9" width="5" height="5" rx="1" fill="var(--muted)" opacity="0.5"/></svg><div class="nav-lbl">Home</div></div>
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><polyline points="2,12 5,7 8,9 11,4 14,6" stroke="var(--muted)" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><div class="nav-lbl">Progress</div></div>
+        <div class="nav-item active"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M8 2v5M5 5h6M4 10c0 2 1.5 4 4 4s4-2 4-4" stroke="#1D9E75" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg><div class="nav-lbl" style="color:var(--accent);">Exercises</div></div>
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><polygon points="8,2 10,6 14,6.5 11,9.5 11.8,14 8,11.8 4.2,14 5,9.5 2,6.5 6,6" stroke="var(--muted)" stroke-width="1.2" fill="none" stroke-linejoin="round"/></svg><div class="nav-lbl">Rewards</div></div>
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="6" r="3" stroke="var(--muted)" stroke-width="1.2"/><path d="M3 14c0-2.761 2.239-4 5-4s5 1.239 5 4" stroke="var(--muted)" stroke-width="1.2" stroke-linecap="round"/></svg><div class="nav-lbl">Settings</div></div>
+      </div>
+    </div>
+    <div class="screen-label">7 · Exercises</div>
+  </div>
+
+  <!-- S8: Rewards -->
+  <div class="screen-wrap">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen-body" style="padding-bottom:0; gap:7px;">
+        <div style="font-size:12px; font-weight:500; font-family:'Syne',sans-serif; color:var(--text);">Rewards</div>
+        <div style="background:var(--accent-light); border-radius:var(--border-radius-lg); padding:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <div style="font-size:9px; font-weight:500; color:#085041;">Level 3 — Spine Keeper</div>
+            <div style="font-size:8px; color:#0F6E56;">420 pts</div>
+          </div>
+          <div class="level-bar-wrap"><div class="level-bar-fill" style="width:62%;"></div></div>
+          <div style="font-size:7px; color:#0F6E56; margin-top:3px;">62% to Level 4</div>
+        </div>
+        <div style="font-size:9px; font-weight:500; color:var(--text);">Badges</div>
+        <div class="badge-grid">
+          <div class="badge-item badge-unlocked">
+            <div class="badge-icon" style="background:#E1F5EE;"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 3l1.5 4h4l-3.2 2.4 1.2 4L10 11l-3.5 2.4 1.2-4L4.5 7h4z" fill="#1D9E75"/></svg></div>
+            <div class="badge-name">First check</div>
+          </div>
+          <div class="badge-item badge-unlocked">
+            <div class="badge-icon" style="background:var(--warn-light);"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 10c0-2.8 2.2-5 5-5s5 2.2 5 5-2.2 5-5 5-5-2.2-5-5z" stroke="#BA7517" stroke-width="1.5" fill="none"/><path d="M10 7v4l2 2" stroke="#BA7517" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+            <div class="badge-name">2-day streak</div>
+          </div>
+          <div class="badge-item badge-unlocked">
+            <div class="badge-icon" style="background:#E6F1FB;"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M6 10c0-2.2 1.8-4 4-4s4 1.8 4 4" stroke="#378ADD" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M8 16l2-2 2 2" stroke="#378ADD" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <div class="badge-name">10 stretches</div>
+          </div>
+          <div class="badge-item badge-locked">
+            <div class="badge-icon" style="background:var(--color-background-secondary);"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="7" y="9" width="6" height="7" rx="1" stroke="var(--muted)" stroke-width="1.3"/><path d="M8 9V7a2 2 0 014 0v2" stroke="var(--muted)" stroke-width="1.3" fill="none"/></svg></div>
+            <div class="badge-name">7-day streak</div>
+          </div>
+          <div class="badge-item badge-locked">
+            <div class="badge-icon" style="background:var(--color-background-secondary);"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="7" y="9" width="6" height="7" rx="1" stroke="var(--muted)" stroke-width="1.3"/><path d="M8 9V7a2 2 0 014 0v2" stroke="var(--muted)" stroke-width="1.3" fill="none"/></svg></div>
+            <div class="badge-name">No slouch week</div>
+          </div>
+          <div class="badge-item badge-locked">
+            <div class="badge-icon" style="background:var(--color-background-secondary); border:1.5px dashed var(--border);"><span style="font-size:14px; color:var(--muted);">?</span></div>
+            <div class="badge-name" style="color:var(--hint);">Hidden</div>
+          </div>
+        </div>
+        <div style="background:var(--color-background-secondary); border-radius:var(--border-radius-md); padding:6px 8px; display:flex; align-items:center; justify-content:space-between;">
+          <div style="font-size:8px; color:var(--muted);">Streak grace day available</div>
+          <div style="font-size:8px; color:var(--accent); font-weight:500;">Use if needed</div>
+        </div>
+      </div>
+      <div class="nav-bar">
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1" fill="var(--muted)" opacity="0.5"/><rect x="9" y="2" width="5" height="5" rx="1" fill="var(--muted)" opacity="0.5"/><rect x="2" y="9" width="5" height="5" rx="1" fill="var(--muted)" opacity="0.5"/><rect x="9" y="9" width="5" height="5" rx="1" fill="var(--muted)" opacity="0.5"/></svg><div class="nav-lbl">Home</div></div>
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><polyline points="2,12 5,7 8,9 11,4 14,6" stroke="var(--muted)" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><div class="nav-lbl">Progress</div></div>
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M8 2v5M5 5h6M4 10c0 2 1.5 4 4 4s4-2 4-4" stroke="var(--muted)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg><div class="nav-lbl">Exercises</div></div>
+        <div class="nav-item active"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><polygon points="8,2 10,6 14,6.5 11,9.5 11.8,14 8,11.8 4.2,14 5,9.5 2,6.5 6,6" stroke="#1D9E75" stroke-width="1.2" fill="none" stroke-linejoin="round"/></svg><div class="nav-lbl" style="color:var(--accent);">Rewards</div></div>
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="6" r="3" stroke="var(--muted)" stroke-width="1.2"/><path d="M3 14c0-2.761 2.239-4 5-4s5 1.239 5 4" stroke="var(--muted)" stroke-width="1.2" stroke-linecap="round"/></svg><div class="nav-lbl">Settings</div></div>
+      </div>
+    </div>
+    <div class="screen-label">8 · Rewards</div>
+  </div>
+
+  <!-- S9: Settings -->
+  <div class="screen-wrap">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen-body" style="padding-bottom:0; gap:5px;">
+        <div style="font-size:12px; font-weight:500; font-family:'Syne',sans-serif; color:var(--text);">Settings</div>
+        <div style="font-size:8px; font-weight:500; color:var(--muted); letter-spacing:0.05em; text-transform:uppercase; margin-top:2px;">Notifications</div>
+        <div class="setting-row">
+          <div><div style="font-size:9px; color:var(--text);">Reminders</div><div style="font-size:7px; color:var(--muted);">Every 25 min</div></div>
+          <div class="toggle"></div>
+        </div>
+        <div class="setting-row">
+          <div style="font-size:9px; color:var(--text);">Smart timing</div>
+          <div class="toggle"></div>
+        </div>
+        <div style="font-size:8px; font-weight:500; color:var(--muted); letter-spacing:0.05em; text-transform:uppercase; margin-top:4px;">Notification vibe</div>
+        <div class="vibe-selector">
+          <div class="vibe-chip active">Gentle</div>
+          <div class="vibe-chip">Motivational</div>
+          <div class="vibe-chip">Strict</div>
+          <div class="vibe-chip">Playful</div>
+        </div>
+        <div style="font-size:8px; font-weight:500; color:var(--muted); letter-spacing:0.05em; text-transform:uppercase; margin-top:4px;">Posture detection</div>
+        <div class="setting-row">
+          <div><div style="font-size:9px; color:var(--text);">Sensor detection</div><div style="font-size:7px; color:var(--muted);">Background monitoring</div></div>
+          <div class="toggle"></div>
+        </div>
+        <div class="setting-row">
+          <div><div style="font-size:9px; color:var(--text);">Camera confirmation</div><div style="font-size:7px; color:var(--muted);">On-tap only, never auto</div></div>
+          <div class="toggle"></div>
+        </div>
+        <div style="font-size:8px; font-weight:500; color:var(--muted); letter-spacing:0.05em; text-transform:uppercase; margin-top:4px;">General</div>
+        <div class="setting-row">
+          <div style="font-size:9px; color:var(--text);">Dark mode</div>
+          <div class="toggle off"></div>
+        </div>
+        <div class="setting-row">
+          <div><div style="font-size:9px; color:var(--text);">Pause mode</div><div style="font-size:7px; color:var(--muted);">Freeze streaks temporarily</div></div>
+          <div style="font-size:8px; color:var(--accent); font-weight:500;">Set →</div>
+        </div>
+        <div class="setting-row" style="border-bottom:none;">
+          <div style="font-size:9px; color:var(--danger);">Clear all data</div>
+        </div>
+      </div>
+      <div class="nav-bar">
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1" fill="var(--muted)" opacity="0.5"/><rect x="9" y="2" width="5" height="5" rx="1" fill="var(--muted)" opacity="0.5"/><rect x="2" y="9" width="5" height="5" rx="1" fill="var(--muted)" opacity="0.5"/><rect x="9" y="9" width="5" height="5" rx="1" fill="var(--muted)" opacity="0.5"/></svg><div class="nav-lbl">Home</div></div>
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><polyline points="2,12 5,7 8,9 11,4 14,6" stroke="var(--muted)" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><div class="nav-lbl">Progress</div></div>
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M8 2v5M5 5h6M4 10c0 2 1.5 4 4 4s4-2 4-4" stroke="var(--muted)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg><div class="nav-lbl">Exercises</div></div>
+        <div class="nav-item"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><polygon points="8,2 10,6 14,6.5 11,9.5 11.8,14 8,11.8 4.2,14 5,9.5 2,6.5 6,6" stroke="var(--muted)" stroke-width="1.2" fill="none" stroke-linejoin="round"/></svg><div class="nav-lbl">Rewards</div></div>
+        <div class="nav-item active"><svg class="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="6" r="3" stroke="#1D9E75" stroke-width="1.2"/><path d="M3 14c0-2.761 2.239-4 5-4s5 1.239 5 4" stroke="#1D9E75" stroke-width="1.2" stroke-linecap="round"/></svg><div class="nav-lbl" style="color:var(--accent);">Settings</div></div>
+      </div>
+    </div>
+    <div class="screen-label">9 · Settings</div>
+  </div>
+
+</div>
+</div>

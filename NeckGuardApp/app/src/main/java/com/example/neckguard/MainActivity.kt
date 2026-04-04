@@ -27,12 +27,40 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
+            val prefs = getSharedPreferences("NeckGuardPrefs", Context.MODE_PRIVATE)
+            var isOnboardingComplete by remember { mutableStateOf(prefs.getBoolean("OnboardingComplete", false)) }
+            
+            var isUserAuthenticated by remember { 
+                val savedToken = prefs.getString("SupabaseToken", null)
+                val savedId = prefs.getString("SupabaseUserId", null)
+                if (savedToken != null) {
+                    com.example.neckguard.SupabaseClient.accessToken = savedToken
+                    com.example.neckguard.SupabaseClient.userId = savedId
+                    mutableStateOf(true)
+                } else mutableStateOf(false)
+            }
+
             NeckGuardTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    AppScreen()
+                    if (!isUserAuthenticated) {
+                        com.example.neckguard.ui.AuthScreen {
+                            // On successful login, save credentials locally
+                            prefs.edit()
+                                .putString("SupabaseToken", com.example.neckguard.SupabaseClient.accessToken)
+                                .putString("SupabaseUserId", com.example.neckguard.SupabaseClient.userId)
+                                .apply()
+                            isUserAuthenticated = true
+                        }
+                    } else if (!isOnboardingComplete) {
+                        com.example.neckguard.ui.OnboardingScreen(prefs = prefs) {
+                            isOnboardingComplete = true
+                        }
+                    } else {
+                        AppScreen()
+                    }
                 }
             }
         }

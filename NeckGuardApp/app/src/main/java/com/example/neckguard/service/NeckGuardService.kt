@@ -202,6 +202,7 @@ class NeckGuardService : Service(), SensorEventListener {
         // 2. Attach PendingIntent to open Transparent Activity
         val intent = Intent(this, com.example.neckguard.CheckPostureActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            putExtra("phone_pitch", com.example.neckguard.engine.PostureEngine.currentPitch)
         }
         val pendingIntent = android.app.PendingIntent.getActivity(
             this, 

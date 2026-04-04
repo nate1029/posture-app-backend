@@ -111,14 +111,19 @@ class CheckPostureActivity : ComponentActivity() {
                     if (faces.isNotEmpty() && !hasResult) {
                         hasResult = true
                         val face = faces[0]
-                        val pitch = face.headEulerAngleX // Negative means looking DOWN at the phone
+                        val facePitch = face.headEulerAngleX // Negative means looking DOWN relative to the phone screen
+                        val phonePitch = intent.getFloatExtra("phone_pitch", 45f) // Absolute angle relative to gravity
                         
-                        Log.d(TAG, "3D Triangulation Output -> Face Pitch: \$pitch")
+                        // Parity with the Python 3D Backend logic:
+                        // absoluteNeckFlexion = phonePitch - facePitch
+                        val absoluteNeckFlexion = phonePitch - facePitch
                         
-                        // Mapping the 3D Face output back into the Android Notification
+                        Log.d(TAG, "3D Triangulation Output -> Phone: \$phonePitch° | Face: \$facePitch° | True Flexion: \$absoluteNeckFlexion°")
+                        
+                        // Mapping exactly to the old Python Backend thresholds
                         val message = when {
-                            pitch < -12f -> "You're tilted downwards (\$pitch°). Please lift your screen."
-                            pitch < -4f -> "Your neck posture is slightly slouched (\$pitch°)."
+                            absoluteNeckFlexion > 40f -> "You're heavily slouched (\$absoluteNeckFlexion° flexion). Please sit up straight and lift your screen."
+                            absoluteNeckFlexion > 25f -> "Your neck posture is slightly crouched (\$absoluteNeckFlexion° flexion)."
                             else -> "Posture looks great! Keep it up."
                         }
                         
