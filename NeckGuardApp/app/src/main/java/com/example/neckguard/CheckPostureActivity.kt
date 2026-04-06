@@ -111,19 +111,24 @@ class CheckPostureActivity : ComponentActivity() {
                     if (faces.isNotEmpty() && !hasResult) {
                         hasResult = true
                         val face = faces[0]
-                        val facePitch = face.headEulerAngleX // Negative means looking DOWN relative to the phone screen
-                        val phonePitch = intent.getFloatExtra("phone_pitch", 45f) // Absolute angle relative to gravity
+                        // WebApp Logic: 
+                        // In Android ML Kit, EulerX is POSITIVE for chin UP, NEGATIVE for chin DOWN.
+                        // When you look down at a phone, you flex your neck forward. We want that to be a positive addition.
+                        val facePitchExtracted = -face.headEulerAngleX 
                         
-                        // Parity with the Python 3D Backend logic:
-                        // absoluteNeckFlexion = phonePitch - facePitch
-                        val absoluteNeckFlexion = phonePitch - facePitch
+                        // phonePitch represents how far back the phone is tilted from straight vertical (0 = vertical)
+                        // This corresponds perfectly to the `phoneOffset = 90 - gyroPitch` in the web app
+                        val phonePitch = intent.getFloatExtra("phone_pitch", 45f)
                         
-                        Log.d(TAG, "3D Triangulation Output -> Phone: \$phonePitch° | Face: \$facePitch° | True Flexion: \$absoluteNeckFlexion°")
+                        // True Neck Pitch exactly like the WebApp: phone tilt + face chin-down tilt
+                        val trueNeckPitch = phonePitch + facePitchExtracted
                         
-                        // Mapping exactly to the old Python Backend thresholds
+                        Log.d(TAG, "WebApp Logic Match -> Phone: $phonePitch° | Face: $facePitchExtracted° | True Flexion: $trueNeckPitch°")
+                        
+                        // Using the strict WebApp thresholds instead of Android's 40/25
                         val message = when {
-                            absoluteNeckFlexion > 40f -> "You're heavily slouched (\$absoluteNeckFlexion° flexion). Please sit up straight and lift your screen."
-                            absoluteNeckFlexion > 25f -> "Your neck posture is slightly crouched (\$absoluteNeckFlexion° flexion)."
+                            trueNeckPitch > 32f -> "High Risk Mode (${String.format("%.1f", trueNeckPitch)}° flexion): You are heavily slouched. Please sit up."
+                            trueNeckPitch > 18f -> "Moderate Risk (${String.format("%.1f", trueNeckPitch)}° flexion): Your neck is slightly crouched."
                             else -> "Posture looks great! Keep it up."
                         }
                         

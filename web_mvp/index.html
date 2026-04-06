@@ -32,6 +32,31 @@
             <div class="data-panel glass-card">
                  <div id="status-banner" class="status-banner status-loading">ANALYZING...</div>
                  
+                 <!-- THRESHOLD VARIATIONS UI -->
+                 <div style="margin: 15px 0; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1);">
+                     <label for="threshold-select" style="font-size: 13px; color: #ccc; font-weight: 600; display: block; margin-bottom: 5px;">🔧 Tuning Profile (Mod / Bad): </label>
+                     <select id="threshold-select" style="width: 100%; background: #111; color: #fff; border: 1px solid #444; padding: 8px; border-radius: 6px; font-family: 'Inter', sans-serif;">
+                         <option value="strict">Strict (15° / 25°)</option>
+                         <option value="balanced" selected>Balanced Defaults (18° / 32°)</option>
+                         <option value="lenient">Lenient (25° / 40°)</option>
+                         <option value="custom">Custom Sliders</option>
+                     </select>
+                     
+                     <div id="custom-sliders" style="display: none; margin-top: 10px;">
+                         <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 2px;">
+                             <span>Moderate Triggers at:</span>
+                             <span id="label-mod">18°</span>
+                         </div>
+                         <input type="range" id="slider-mod" min="5" max="30" value="18" style="width: 100%;">
+                         
+                         <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 2px; margin-top: 8px;">
+                             <span>Bad Triggers at:</span>
+                             <span id="label-bad">32°</span>
+                         </div>
+                         <input type="range" id="slider-bad" min="15" max="60" value="32" style="width: 100%;">
+                     </div>
+                 </div>
+
                  <div class="metrics-row">
                      <span>📱 Phone Gyro:</span>
                      <span id="metric-gyro">0.0°</span>

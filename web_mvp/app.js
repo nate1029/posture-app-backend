@@ -13,6 +13,10 @@ let faceLandmarker = null;
 let lastVideoTime = -1;
 let gyroPitch = 90;
 
+// Threshold Tuning variables
+let THRESH_MOD = 18;
+let THRESH_BAD = 32;
+
 function updateStatus(text, type, alerts = []) {
     const banner = document.getElementById('status-banner');
     banner.innerText = text;
@@ -20,6 +24,39 @@ function updateStatus(text, type, alerts = []) {
     
     const alertBox = document.getElementById('alerts-list');
     alertBox.innerHTML = alerts.map(a => `• ${a}`).join('<br>');
+}
+
+/* --- THRESHOLD TUNING LOGIC --- */
+const thresholdSelect = document.getElementById('threshold-select');
+const customSliders = document.getElementById('custom-sliders');
+const sliderMod = document.getElementById('slider-mod');
+const sliderBad = document.getElementById('slider-bad');
+const labelMod = document.getElementById('label-mod');
+const labelBad = document.getElementById('label-bad');
+
+function updateThresholds() {
+    if (!thresholdSelect) return;
+    const val = thresholdSelect.value;
+    
+    if (val === 'custom') {
+        customSliders.style.display = 'block';
+        THRESH_MOD = parseInt(sliderMod.value) || 18;
+        THRESH_BAD = parseInt(sliderBad.value) || 32;
+        labelMod.innerText = `${THRESH_MOD}°`;
+        labelBad.innerText = `${THRESH_BAD}°`;
+    } else {
+        customSliders.style.display = 'none';
+        if (val === 'strict') { THRESH_MOD = 15; THRESH_BAD = 25; }
+        else if (val === 'balanced') { THRESH_MOD = 18; THRESH_BAD = 32; }
+        else if (val === 'lenient') { THRESH_MOD = 25; THRESH_BAD = 40; }
+    }
+}
+
+if (thresholdSelect) {
+    thresholdSelect.addEventListener('change', updateThresholds);
+    sliderMod.addEventListener('input', updateThresholds);
+    sliderBad.addEventListener('input', updateThresholds);
+    updateThresholds(); // Init
 }
 
 startBtn.addEventListener('click', async () => {
@@ -142,9 +179,9 @@ function enableExperimentGyro() {
                 status_enum = "UNKNOWN";
             } else if (!is_active) {
                 status_enum = "IDLE";
-            } else if (neck_deg < 15.0) {
+            } else if (neck_deg < THRESH_MOD) {
                 status_enum = "GOOD";
-            } else if (neck_deg < 35.0) {
+            } else if (neck_deg < THRESH_BAD) {
                 status_enum = "MODERATE";
             } else {
                 status_enum = "POOR";
@@ -265,8 +302,8 @@ function process3DPhysics(matrix) {
     document.getElementById('metric-face').innerText = `${facePitch.toFixed(1)}°`;
     document.getElementById('metric-neck').innerText = `${trueNeckPitch.toFixed(1)}°`;
 
-    if (trueNeckPitch > 32) updateStatus("HIGH RISK", "risk", ["Dropdown Neck Strain"]);
-    else if (trueNeckPitch > 18) updateStatus("MODERATE", "moderate", ["Slight Forward Bend"]);
+    if (trueNeckPitch > THRESH_BAD) updateStatus(`HIGH RISK (> ${THRESH_BAD}°)`, "risk", ["Dropdown Neck Strain"]);
+    else if (trueNeckPitch > THRESH_MOD) updateStatus(`MODERATE (> ${THRESH_MOD}°)`, "moderate", ["Slight Forward Bend"]);
     else updateStatus("GOOD POSTURE", "good");
 }
 

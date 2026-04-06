@@ -46,24 +46,27 @@ object PostureEngine {
             return PostureState.UNKNOWN
         }
 
-        // 2. Landscape Axis Compensation (Crucial for users watching videos)
-        val gravityY = if (isLandscape) -ax else ay
-        val gravityZ = az
+        // 2. Landscape Axis Compensation
+        // Android's Accelerometer reports +9.81 on Y when upright, but Python script assumed -9.81.
+        // We invert the incoming ay to match the Pure Gravity vector format expected by Python.
+        val pureGravityY = if (isLandscape) ax else -ay
         val gyroX = if (isLandscape) gy else gx
 
-        // 3. Accelerometer absolute pitch
-        // Android Upright: Y = 9.81, Z = 0 -> atan2(0, 9.81) = 0°
-        // Android Flat: Y = 0, Z = 9.81 -> atan2(9.81, 0) = 90°
-        var accelPitch = (atan2(gravityZ.toDouble(), gravityY.toDouble()) * 180.0 / Math.PI).toFloat()
-        
-        // Take absolute value so leaning backward in bed (negative Z) also counts as an angle
-        accelPitch = abs(accelPitch).coerceIn(0f, 90f)
+        // 3. Accelerometer absolute pitch (EXACT neck_posture_sensor.py implementation)
+        // Python: cos_angle = max(-1.0, min(1.0, -ay / magnitude))
+        //         tilt = math.degrees(math.acos(cos_angle))
+        val safeMag = if (magnitude < 0.5f) 0.5f else magnitude
+        val cosAngle = (-pureGravityY / safeMag).coerceIn(-1.0f, 1.0f)
+        val accelPitch = Math.toDegrees(kotlin.math.acos(cosAngle.toDouble())).toFloat()
 
         // 4. Complementary Filter (Gyro + Accel)
         if (lastTimestampNS != 0L) {
             val dt = (timestampNS - lastTimestampNS) * 1.0f / 1_000_000_000.0f
-            // Integrate gyro over time: current_angle = current_angle + gyro_rate * dt
-            currentPitch = ALPHA * (currentPitch + gyroX * dt) + (1.0f - ALPHA) * accelPitch
+            // In Android, tilting the phone backwards (top away from user) yields a NEGATIVE gx.
+            // But accelPitch increases (0 to 90) when tilted backwards. 
+            // We must invert gx to prevent sensory fighting.
+            val gyroDegrees = Math.toDegrees(-gyroX.toDouble()).toFloat()
+            currentPitch = ALPHA * (currentPitch + gyroDegrees * dt) + (1.0f - ALPHA) * accelPitch
         } else {
             currentPitch = accelPitch // Seed initial value
         }
