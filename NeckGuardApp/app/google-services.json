@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "667846054837",
+    "project_id": "neckguard",
+    "storage_bucket": "neckguard.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:667846054837:android:f91ab2d9c1159868aa7ffc",
+        "android_client_info": {
+          "package_name": "com.example.neckguard"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBCQp5j7NXiura_xs1kliinGxluGJogAss"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

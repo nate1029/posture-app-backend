@@ -10,8 +10,8 @@ import java.net.URL
 
 object SupabaseClient {
     private const val TAG = "SupabaseClient"
-    private const val BASE_URL = "https://zxzfhzjdrwerovlurbkh.supabase.co"
-    private const val API_KEY = "sb_publishable_n-B29ciKC36uczmdJ8gxSQ_thZijAY-"
+    private val BASE_URL = BuildConfig.SUPABASE_URL
+    private val API_KEY = BuildConfig.SUPABASE_ANON_KEY
 
     // Holds the session dynamically after login/signup
     var accessToken: String? = null
@@ -87,6 +87,7 @@ object SupabaseClient {
             val url = URL("$BASE_URL/rest/v1/user_profiles") // Automatically mapping to your DB Table
             val conn = setupConnection(url)
             conn.setRequestProperty("Authorization", "Bearer $accessToken")
+            conn.setRequestProperty("Prefer", "resolution=merge-duplicates") // Perform UPSERT
             
             val jsonBody = JSONObject().apply {
                 put("user_id", userId) // Maps exact row to Auth logic automatically inside Supabase
@@ -107,6 +108,39 @@ object SupabaseClient {
 
         } catch (e: Exception) {
             Log.e(TAG, "Database Insertion exception", e)
+            return@withContext false
+        }
+    }
+
+    /**
+     * Uploads unhandled JVM crashes directly to a Postgres table.
+     * Prevents reliance on Google Services/Firebase Crashlytics for raw stability indexing.
+     */
+    suspend fun uploadCrashLog(stackTrace: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val url = URL("$BASE_URL/rest/v1/crash_reports")
+            val conn = setupConnection(url)
+            
+            // Note: Does not require "Authorization: Bearer <token>" if the table
+            // is configured to allow anon inserts, OR we can append it if available.
+            if (accessToken != null) {
+                conn.setRequestProperty("Authorization", "Bearer $accessToken")
+            }
+            
+            val jsonBody = JSONObject().apply {
+                put("user_id", userId ?: "unauthenticated")
+                put("stack_trace", stackTrace)
+                put("device_info", android.os.Build.MODEL + " (API " + android.os.Build.VERSION.SDK_INT + ")")
+            }
+
+            writeBody(conn, jsonBody.toString())
+
+            val success = conn.responseCode in 200..299
+            Log.d(TAG, "Crash Upload result: ${conn.responseCode} - $success")
+            return@withContext success
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to upload crash log", e)
             return@withContext false
         }
     }

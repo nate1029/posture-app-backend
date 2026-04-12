@@ -28,14 +28,14 @@ object PostureEngine {
      * @param ax, ay, az Accelerometer data in m/s2
      * @param gx, gy, gz Gyroscope data in rad/s
      * @param timestampNS Event timestamp in nanoseconds
-     * @param isLandscape Whether the display is currently rotated
+     * @param surfaceRotation Android Surface rotation mapping
      * @return The classified posture state
      */
     fun processSensorTick(
         ax: Float, ay: Float, az: Float,
         gx: Float, gy: Float, gz: Float,
         timestampNS: Long,
-        isLandscape: Boolean
+        surfaceRotation: Int
     ): PostureState {
         // 1. Motion Spike Detection
         val magnitude = sqrt((ax * ax + ay * ay + az * az).toDouble()).toFloat()
@@ -47,10 +47,28 @@ object PostureEngine {
         }
 
         // 2. Landscape Axis Compensation
-        // Android's Accelerometer reports +9.81 on Y when upright, but Python script assumed -9.81.
-        // We invert the incoming ay to match the Pure Gravity vector format expected by Python.
-        val pureGravityY = if (isLandscape) ax else -ay
-        val gyroX = if (isLandscape) gy else gx
+        val pureGravityY: Float
+        val gyroX: Float
+
+        when (surfaceRotation) {
+            android.view.Surface.ROTATION_90 -> {
+                pureGravityY = -ax
+                gyroX = -gy
+            }
+            android.view.Surface.ROTATION_270 -> {
+                pureGravityY = ax
+                gyroX = gy
+            }
+            android.view.Surface.ROTATION_180 -> {
+                pureGravityY = ay
+                gyroX = -gx
+            }
+            else -> {
+                // ROTATION_0 (Portrait)
+                pureGravityY = -ay
+                gyroX = gx
+            }
+        }
 
         // 3. Accelerometer absolute pitch (EXACT neck_posture_sensor.py implementation)
         // Python: cos_angle = max(-1.0, min(1.0, -ay / magnitude))
@@ -72,6 +90,10 @@ object PostureEngine {
         }
         lastTimestampNS = timestampNS
         
+        if (currentPitch.isNaN()) {
+            currentPitch = accelPitch
+        }
+
         // Safety bound
         currentPitch = currentPitch.coerceIn(0f, 90f)
 

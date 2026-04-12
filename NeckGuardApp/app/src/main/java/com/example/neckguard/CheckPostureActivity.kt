@@ -17,6 +17,9 @@ import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.lifecycle.lifecycleScope
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -27,7 +30,7 @@ import java.util.concurrent.Executors
 class CheckPostureActivity : ComponentActivity() {
 
     private lateinit var cameraExecutor: ExecutorService
-    private var hasResult = false
+    private var hasResult = java.util.concurrent.atomic.AtomicBoolean(false)
 
     companion object {
         private const val TAG = "CheckPostureAct"
@@ -48,13 +51,13 @@ class CheckPostureActivity : ComponentActivity() {
         startCamera()
         
         // Timeout fallback string so the camera doesn't run forever if no face is detected
-        window.decorView.postDelayed({
-            if (!hasResult) {
-                hasResult = true
+        lifecycleScope.launch {
+            delay(5000)
+            if (hasResult.compareAndSet(false, true)) {
                 fireFallbackNotification("Could not find a face in time.")
                 finish()
             }
-        }, 5000)
+        }
     }
 
     private fun startCamera() {
@@ -97,7 +100,7 @@ class CheckPostureActivity : ComponentActivity() {
 
     @SuppressLint("UnsafeOptInUsageError")
     private fun processImageProxy(detector: com.google.mlkit.vision.face.FaceDetector, imageProxy: ImageProxy) {
-        if (hasResult) {
+        if (hasResult.get()) {
             imageProxy.close()
             return
         }
@@ -108,8 +111,7 @@ class CheckPostureActivity : ComponentActivity() {
             
             detector.process(image)
                 .addOnSuccessListener { faces ->
-                    if (faces.isNotEmpty() && !hasResult) {
-                        hasResult = true
+                    if (faces.isNotEmpty() && hasResult.compareAndSet(false, true)) {
                         val face = faces[0]
                         // WebApp Logic: 
                         // In Android ML Kit, EulerX is POSITIVE for chin UP, NEGATIVE for chin DOWN.
@@ -120,15 +122,15 @@ class CheckPostureActivity : ComponentActivity() {
                         // This corresponds perfectly to the `phoneOffset = 90 - gyroPitch` in the web app
                         val phonePitch = intent.getFloatExtra("phone_pitch", 45f)
                         
-                        // True Neck Pitch exactly like the WebApp: phone tilt + face chin-down tilt
-                        val trueNeckPitch = phonePitch + facePitchExtracted
+                        // True Neck Pitch exactly like the WebApp: (phone tilt + face chin-down tilt) * 0.82 ratio scale
+                        val trueNeckPitch = (phonePitch + facePitchExtracted) * 0.82f
                         
                         Log.d(TAG, "WebApp Logic Match -> Phone: $phonePitch° | Face: $facePitchExtracted° | True Flexion: $trueNeckPitch°")
                         
                         // Using the strict WebApp thresholds instead of Android's 40/25
                         val message = when {
-                            trueNeckPitch > 32f -> "High Risk Mode (${String.format("%.1f", trueNeckPitch)}° flexion): You are heavily slouched. Please sit up."
-                            trueNeckPitch > 18f -> "Moderate Risk (${String.format("%.1f", trueNeckPitch)}° flexion): Your neck is slightly crouched."
+                            trueNeckPitch > 35f -> "High Risk Mode (${String.format("%.1f", trueNeckPitch)}° flexion): You are heavily slouched. Please sit up."
+                            trueNeckPitch > 15f -> "Moderate Risk (${String.format("%.1f", trueNeckPitch)}° flexion): Your neck is slightly crouched."
                             else -> "Posture looks great! Keep it up."
                         }
                         
@@ -155,10 +157,8 @@ class CheckPostureActivity : ComponentActivity() {
     }
 
     private fun fireFallbackNotification(reason: String) {
-        if (!hasResult) {
-            fireResultNotification("Posture check failed (\$reason). Based on the phone sensors, your neck may still be strained.")
-            hasResult = true
-        }
+        // hasResult is checked and set in the caller already
+        fireResultNotification("Posture check failed ($reason). Based on the phone sensors, your neck may still be strained.")
     }
 
     private fun fireResultNotification(text: String) {

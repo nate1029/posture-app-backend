@@ -84,6 +84,25 @@ fun AuthScreen(onLoginSuccess: () -> Unit) {
             ) {
                 Text("Continue", style = MaterialTheme.typography.titleMedium)
             }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("OR", style = MaterialTheme.typography.labelSmall)
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            val context = androidx.compose.ui.platform.LocalContext.current
+            Button(
+                onClick = {
+                    val intent = android.content.Intent(
+                        android.content.Intent.ACTION_VIEW, 
+                        android.net.Uri.parse("https://zxzfhzjdrwerovlurbkh.supabase.co/auth/v1/authorize?provider=google&redirect_to=neckguard://callback")
+                    )
+                    context.startActivity(intent)
+                },
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+            ) {
+                Text("Sign in with Google", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSecondary)
+            }
         }
     }
 }
