@@ -23,7 +23,7 @@
             android:id="@+id/notif_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="NeckGuard Active"
+            android:text="NudgeUp Active"
             android:textSize="14sp"
             android:textColor="?android:attr/textColorPrimary"
             android:textStyle="bold" />

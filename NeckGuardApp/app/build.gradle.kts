@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
 }
 
 // Securely load keys from local.properties (which is not committed to version control)
@@ -22,7 +23,11 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.neckguard"
+        // Public Play Store identifier. Permanent — once published, can never be
+        // changed. The Kotlin source still lives under `com.example.neckguard`
+        // (the [namespace] above) which Google Play does not see; only the
+        // applicationId is user-visible / billed against.
+        applicationId = "app.nudgeup.android"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
@@ -94,4 +99,20 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-messaging")
+    implementation("com.google.firebase:firebase-crashlytics")
+    implementation("com.google.firebase:firebase-perf")
+    implementation("com.google.firebase:firebase-config")
+    implementation("com.google.firebase:firebase-auth")
+
+    // Google Sign-In (native credential picker, no browser redirect)
+    implementation("com.google.android.gms:play-services-auth:21.3.0")
+
+    // Coroutine bridge for Firebase Task<T> → suspend fun
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
+
+    // Lottie for Animated Exercises characters
+    implementation("com.airbnb.android:lottie-compose:6.4.0")
+
+    // Rive for Interactive Vector Characters
+    implementation("app.rive:rive-android:9.3.0")
 }

@@ -1,0 +1,100 @@
+﻿{
+  "parameters": {
+    "nudge_critical_instruction": {
+      "defaultValue": {
+        "value": "Raise your phone to eye level right now"
+      },
+      "valueType": "STRING"
+    },
+    "nudge_critical_tags": {
+      "defaultValue": {
+        "value": "🔴 Critical,⏱ 5 sec"
+      },
+      "valueType": "STRING"
+    },
+    "nudge_critical_reasoning": {
+      "defaultValue": {
+        "value": "Fixing your phone angle prevents text neck."
+      },
+      "valueType": "STRING"
+    },
+    "nudge_moderate_instruction": {
+      "defaultValue": {
+        "value": "Tuck your chin slightly inwards for 10s"
+      },
+      "valueType": "STRING"
+    },
+    "nudge_moderate_tags": {
+      "defaultValue": {
+        "value": "🔵 Moderate,⏱ 10 sec,Cervical"
+      },
+      "valueType": "STRING"
+    },
+    "nudge_moderate_reasoning": {
+      "defaultValue": {
+        "value": "Chin tucks strengthen deep neck flexors."
+      },
+      "valueType": "STRING"
+    },
+    "detect_bad_title": {
+      "defaultValue": {
+        "value": "Prolonged slouch detected yesterday"
+      },
+      "valueType": "STRING"
+    },
+    "detect_bad_severity": {
+      "defaultValue": {
+        "value": "Spinal imbalance • High severity"
+      },
+      "valueType": "STRING"
+    },
+    "detect_good_title": {
+      "defaultValue": {
+        "value": "Optimal alignment maintained"
+      },
+      "valueType": "STRING"
+    },
+    "detect_good_subtitle": {
+      "defaultValue": {
+        "value": "Maintained perfect spine yesterday."
+      },
+      "valueType": "STRING"
+    },
+    "detect_good_severity": {
+      "defaultValue": {
+        "value": "Excellent • No action needed"
+      },
+      "valueType": "STRING"
+    },
+    "leaderboard_enabled": {
+      "defaultValue": {
+        "value": "false"
+      },
+      "valueType": "BOOLEAN"
+    },
+    "friends_enabled": {
+      "defaultValue": {
+        "value": "false"
+      },
+      "valueType": "BOOLEAN"
+    },
+    "slouch_angle_threshold": {
+      "defaultValue": {
+        "value": "25"
+      },
+      "valueType": "NUMBER"
+    },
+    "points_per_exercise": {
+      "defaultValue": {
+        "value": "50"
+      },
+      "valueType": "NUMBER"
+    },
+    "emergency_message": {
+      "defaultValue": {
+        "value": ""
+      },
+      "valueType": "STRING"
+    }
+  }
+}

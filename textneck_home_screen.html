@@ -1,0 +1,264 @@
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#F5F0E8;
+  --teal:#0D7377;
+  --teal-s:#5EADB0;
+  --teal-w:#D6ECEC;
+  --amber:#E8852A;
+  --red:#C94040;
+  --sand:#C9BA9B;
+  --slate:#2C3E50;
+  --slate-m:#5A6E80;
+  --white:#ffffff;
+  --r-card:20px;
+  --r-pill:40px;
+  --ff-d:'DM Serif Display',serif;
+  --ff-s:'DM Sans',sans-serif;
+}
+body{background:var(--bg);font-family:var(--ff-s);color:var(--slate)}
+.wrap{max-width:390px;margin:0 auto;padding:0 0 32px}
+
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:20px 20px 0}
+.diamond{width:26px;height:26px;background:var(--slate);clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}
+.icon-circle{width:36px;height:36px;border-radius:50%;border:1.5px solid rgba(44,62,80,.15);display:flex;align-items:center;justify-content:center;background:var(--white);font-size:15px;cursor:pointer}
+
+.hero{padding:18px 20px 0}
+.hero-sub{font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--teal-s);text-transform:uppercase;margin-bottom:4px}
+.hero-title{font-family:var(--ff-d);font-size:28px;line-height:1.15;color:var(--slate)}
+.hero-title em{font-style:italic;color:var(--teal)}
+.hero-avatar{display:inline-flex;align-items:center;gap:8px;margin-top:6px}
+.avatar-pill{background:var(--teal-w);border-radius:var(--r-pill);padding:5px 14px 5px 6px;display:flex;align-items:center;gap:7px}
+.av-img{width:28px;height:28px;border-radius:50%;background:var(--teal);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff}
+.av-name{font-size:13px;font-weight:600;color:var(--teal)}
+
+.section{padding:20px 20px 0}
+.sec-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.sec-label{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--slate-m)}
+.sec-more{font-size:11px;font-weight:600;color:var(--teal-s);cursor:pointer}
+
+/* ── POSTURE STATUS CARD ── */
+.posture-card{border-radius:var(--r-card);padding:18px;background:var(--white);border:1px solid rgba(0,0,0,.05)}
+.posture-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+.ph-left .p-title{font-size:13px;font-weight:500;color:var(--slate-m);margin-bottom:2px}
+.ph-left .p-angle{font-family:var(--ff-d);font-size:36px;color:var(--slate);line-height:1}
+.ph-left .p-unit{font-size:13px;color:var(--slate-m)}
+.state-badge{border-radius:var(--r-pill);padding:6px 14px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px}
+.state-good{background:#D6F0E4;color:#1A7A4A}
+.state-mod{background:#FDE8D0;color:#A0540A}
+.state-poor{background:#FAE0E0;color:var(--red)}
+.state-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.dot-g{background:#1A7A4A}.dot-a{background:var(--amber)}.dot-r{background:var(--red)}
+
+.posture-bar-wrap{margin:12px 0 8px}
+.posture-bar-track{height:8px;border-radius:4px;background:#EEE;overflow:hidden;position:relative}
+.posture-bar-fill{height:100%;border-radius:4px;background:var(--teal);width:28%}
+.posture-bar-labels{display:flex;justify-content:space-between;margin-top:5px}
+.pbl{font-size:10px;color:var(--slate-m)}
+
+.check-btn{background:var(--teal);color:#fff;border:none;border-radius:var(--r-pill);padding:11px 20px;font-family:var(--ff-s);font-size:13px;font-weight:600;width:100%;cursor:pointer;letter-spacing:.02em;margin-top:10px}
+
+/* ── MOOD LOG ── */
+.mood-card{border-radius:var(--r-card);padding:18px;background:var(--white);border:1px solid rgba(0,0,0,.05)}
+.mood-row{display:flex;justify-content:space-between;margin-top:4px}
+.mood-item{display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer}
+.mood-face{width:44px;height:44px;border-radius:50%;background:var(--bg);border:2px solid transparent;display:flex;align-items:center;justify-content:center;font-size:20px;transition:border .15s,background .15s}
+.mood-face.sel{border-color:var(--teal);background:var(--teal-w)}
+.mood-face:hover{border-color:var(--teal-s)}
+.mood-lbl{font-size:10px;color:var(--slate-m);font-weight:500}
+
+/* ── PROGRESS ── */
+.prog-card{border-radius:var(--r-card);padding:18px;background:var(--teal);color:#fff}
+.prog-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+.prog-label{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.65);margin-bottom:4px}
+.prog-num{font-family:var(--ff-d);font-size:48px;line-height:1;color:#fff}
+.prog-sub{font-size:12px;color:rgba(255,255,255,.65);margin-top:2px}
+.streak-pill{background:rgba(255,255,255,.15);border-radius:var(--r-pill);padding:6px 14px;display:flex;align-items:center;gap:6px}
+.streak-icon{font-size:14px}
+.streak-val{font-size:14px;font-weight:700;color:#fff}
+.streak-lbl{font-size:11px;color:rgba(255,255,255,.65)}
+.dot-grid{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;max-width:160px}
+.dot-grid span{width:13px;height:13px;border-radius:50%;display:block;background:rgba(255,255,255,.2)}
+.dot-grid span.f1{background:rgba(255,255,255,.9)}
+.dot-grid span.f2{background:rgba(255,255,255,.55)}
+.prog-stats{display:flex;gap:8px;margin-top:14px}
+.ps-chip{flex:1;background:rgba(255,255,255,.12);border-radius:12px;padding:10px 12px;text-align:center}
+.ps-chip .psv{font-family:var(--ff-d);font-size:18px;color:#fff}
+.ps-chip .psl{font-size:9px;color:rgba(255,255,255,.6);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
+
+/* ── BOTTOM NAV ── */
+.nav{background:var(--white);margin:20px 16px 0;border-radius:var(--r-card);padding:12px 20px;display:flex;justify-content:space-around;align-items:center;border:1px solid rgba(0,0,0,.06)}
+.ni{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
+.ni-icon{font-size:18px;color:var(--slate-m)}
+.ni-lbl{font-size:10px;color:var(--slate-m);font-weight:500}
+.ni.active .ni-icon-wrap{background:var(--slate);width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;margin-top:-6px}
+.ni.active .ni-lbl{color:var(--slate);font-weight:700}
+</style>
+
+<h2 class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">TextNeck app home screen with posture status, mood log, and progress sections</h2>
+
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="diamond"></div>
+    <div style="font-size:12px;font-weight:600;color:var(--slate-m);letter-spacing:.04em">TextNeck</div>
+    <div class="icon-circle">&#9900;</div>
+  </div>
+
+  <div class="hero">
+    <div class="hero-sub">Daily reflection</div>
+    <div class="hero-title">Hello, Alex &#128075;<br><em>How's your neck</em><br>feeling today?</div>
+    <div style="margin-top:10px">
+      <div class="avatar-pill">
+        <div class="av-img">A</div>
+        <div style="font-size:12px;color:var(--teal);font-weight:500">Monday, 13 Apr</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="sec-row">
+      <div class="sec-label">Posture status</div>
+      <div class="sec-more">Details &#8594;</div>
+    </div>
+    <div class="posture-card">
+      <div class="posture-header">
+        <div class="ph-left">
+          <div class="p-title">Current neck angle</div>
+          <div><span class="p-angle">28</span><span class="p-unit">&#176;</span></div>
+        </div>
+        <div class="state-badge state-good">
+          <div class="state-dot dot-g"></div>Good posture
+        </div>
+      </div>
+      <div class="posture-bar-wrap">
+        <div class="posture-bar-track">
+          <div class="posture-bar-fill" id="posture-fill"></div>
+        </div>
+        <div class="posture-bar-labels">
+          <span class="pbl">0&#176; Neutral</span>
+          <span class="pbl">30&#176; Moderate</span>
+          <span class="pbl">60&#176; Poor</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <div style="flex:1;background:var(--teal-w);border-radius:10px;padding:9px 12px;text-align:center">
+          <div style="font-size:11px;color:var(--teal);font-weight:700">Last check</div>
+          <div style="font-size:13px;font-weight:600;color:var(--slate);margin-top:2px">9:41 AM</div>
+        </div>
+        <div style="flex:1;background:#FDE8D0;border-radius:10px;padding:9px 12px;text-align:center">
+          <div style="font-size:11px;color:#A0540A;font-weight:700">Avg today</div>
+          <div style="font-size:13px;font-weight:600;color:var(--slate);margin-top:2px">32&#176;</div>
+        </div>
+        <div style="flex:1;background:#D6F0E4;border-radius:10px;padding:9px 12px;text-align:center">
+          <div style="font-size:11px;color:#1A7A4A;font-weight:700">Good time</div>
+          <div style="font-size:13px;font-weight:600;color:var(--slate);margin-top:2px">4.2h</div>
+        </div>
+      </div>
+      <button class="check-btn">Check posture now &#8594;</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="sec-row">
+      <div class="sec-label">Daily mood log</div>
+      <div class="sec-more">&#183;&#183;</div>
+    </div>
+    <div class="mood-card">
+      <div style="font-size:13px;color:var(--slate-m);margin-bottom:12px">How does your neck feel right now?</div>
+      <div class="mood-row">
+        <div class="mood-item" onclick="selectMood(this)">
+          <div class="mood-face sel">&#128512;</div>
+          <div class="mood-lbl">Great</div>
+        </div>
+        <div class="mood-item" onclick="selectMood(this)">
+          <div class="mood-face">&#128528;</div>
+          <div class="mood-lbl">Mild</div>
+        </div>
+        <div class="mood-item" onclick="selectMood(this)">
+          <div class="mood-face">&#128533;</div>
+          <div class="mood-lbl">Stiff</div>
+        </div>
+        <div class="mood-item" onclick="selectMood(this)">
+          <div class="mood-face">&#128543;</div>
+          <div class="mood-lbl">Sore</div>
+        </div>
+        <div class="mood-item" onclick="selectMood(this)">
+          <div class="mood-face">&#128550;</div>
+          <div class="mood-lbl">Pain</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="sec-row">
+      <div class="sec-label">Progress &amp; streak</div>
+      <div class="sec-more">This week &#8594;</div>
+    </div>
+    <div class="prog-card">
+      <div class="prog-top">
+        <div>
+          <div class="prog-label">Weekly plan</div>
+          <div class="prog-num">78%</div>
+          <div class="prog-sub">of weekly goal done</div>
+        </div>
+        <div class="streak-pill">
+          <span class="streak-icon">&#9889;</span>
+          <div>
+            <div class="streak-val">7</div>
+            <div class="streak-lbl">day streak</div>
+          </div>
+        </div>
+      </div>
+      <div class="dot-grid" id="dotgrid"></div>
+      <div class="prog-stats">
+        <div class="ps-chip"><div class="psv">12</div><div class="psl">Sessions</div></div>
+        <div class="ps-chip"><div class="psv">3.2h</div><div class="psl">Total time</div></div>
+        <div class="ps-chip"><div class="psv">+4%</div><div class="psl">vs last wk</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nav">
+    <div class="ni">
+      <div class="ni-icon">&#128202;</div>
+      <div class="ni-lbl">Stats</div>
+    </div>
+    <div class="ni">
+      <div class="ni-icon">&#128203;</div>
+      <div class="ni-lbl">Exercises</div>
+    </div>
+    <div class="ni active">
+      <div class="ni-icon-wrap">&#127968;</div>
+      <div class="ni-lbl">Home</div>
+    </div>
+    <div class="ni">
+      <div class="ni-icon">&#128276;</div>
+      <div class="ni-lbl">Alerts</div>
+    </div>
+    <div class="ni">
+      <div class="ni-icon">&#128100;</div>
+      <div class="ni-lbl">Profile</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const dg = document.getElementById('dotgrid');
+for(let i=0;i<28;i++){
+  const s=document.createElement('span');
+  if(i<22) s.classList.add('f1');
+  else if(i<25) s.classList.add('f2');
+  dg.appendChild(s);
+}
+function selectMood(el){
+  document.querySelectorAll('.mood-face').forEach(f=>f.classList.remove('sel'));
+  el.querySelector('.mood-face').classList.add('sel');
+}
+const fill=document.getElementById('posture-fill');
+if(fill){fill.style.width='46%'}
+</script>

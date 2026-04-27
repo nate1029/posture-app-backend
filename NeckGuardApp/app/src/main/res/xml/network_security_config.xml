@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network Security Configuration for NudgeUp.
+
+  Goal: defence-in-depth against network MITM. Android already disables
+  cleartext (HTTP) traffic by default on API 28+, but declaring it
+  explicitly here means:
+    • A misconfigured `usesCleartextTraffic` somewhere else in the manifest
+      cannot accidentally re-enable it.
+    • Older OEM forks (some Chinese ROMs) that don't honour the API 28
+      default still get the right behaviour.
+
+  Cert pinning:
+    Pinning would protect us from a rogue CA in the device trust store
+    (e.g. an MDM-installed root, or a corrupted `cacerts.bks`). However:
+      - Supabase fronts on Cloudflare, which rotates leaf and intermediate
+        certs on its own schedule. A hardcoded pin would brick the app on
+        rotation until we ship an emergency update.
+      - The pin must include a backup that's currently valid AND will
+        survive the next rotation, plus an `expiration` so we don't
+        permanently brick on cert lifecycle gaps.
+
+    To enable pinning later, uncomment the <pin-set> block below and run
+    the following on a workstation to extract the current SPKI hash:
+
+      openssl s_client -showcerts -connect YOUR_PROJECT_REF.supabase.co:443 \
+        -servername YOUR_PROJECT_REF.supabase.co < /dev/null 2>/dev/null \
+        | openssl x509 -pubkey -noout \
+        | openssl pkey -pubin -outform der \
+        | openssl dgst -sha256 -binary \
+        | openssl enc -base64
+
+    For now, we rely on the system trust store + HTTPS-only.
+-->
+<network-security-config>
+
+    <!-- Default: HTTPS only, system trust anchors only, no user-installed CAs -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Supabase REST + Auth + Storage. Hard-disable cleartext explicitly. -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">supabase.co</domain>
+        <domain includeSubdomains="true">supabase.in</domain>
+
+        <!--
+        <pin-set expiration="2027-01-01">
+            <pin digest="SHA-256">REPLACE_WITH_LEAF_SPKI_HASH=</pin>
+            <pin digest="SHA-256">REPLACE_WITH_BACKUP_SPKI_HASH=</pin>
+        </pin-set>
+        -->
+    </domain-config>
+
+    <!-- Firebase services (FCM, Crashlytics, Remote Config, Analytics).
+         The Firebase SDKs use *.googleapis.com and *.crashlytics.com. -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">googleapis.com</domain>
+        <domain includeSubdomains="true">crashlytics.com</domain>
+        <domain includeSubdomains="true">firebaseio.com</domain>
+        <domain includeSubdomains="true">firebase.googleapis.com</domain>
+        <domain includeSubdomains="true">firebaseinstallations.googleapis.com</domain>
+        <domain includeSubdomains="true">firebaseremoteconfig.googleapis.com</domain>
+        <domain includeSubdomains="true">app-measurement.com</domain>
+    </domain-config>
+
+</network-security-config>

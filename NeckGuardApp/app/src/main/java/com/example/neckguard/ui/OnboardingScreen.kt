@@ -17,7 +17,11 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
-fun OnboardingScreen(prefs: SharedPreferences, onComplete: () -> Unit) {
+fun OnboardingScreen(
+    prefs: SharedPreferences,
+    repository: com.example.neckguard.data.UserRepository,
+    onComplete: () -> Unit
+) {
     var currentStep by remember { mutableStateOf(0) }
     
     // User selections
@@ -138,14 +142,13 @@ fun OnboardingScreen(prefs: SharedPreferences, onComplete: () -> Unit) {
                             syncingProfile = true
                             syncError = null
                             coroutineScope.launch {
-                                // Upload Questionnaire to Supabase!
+                                // Try Supabase first
                                 val success = com.example.neckguard.SupabaseClient.saveProfile(
                                     name, ageGroup, notificationVibe, usageContext, neckHealth, checkIntervalMs
                                 )
                                 syncingProfile = false
-                                
+
                                 if (success) {
-                                    // Finish Onboarding
                                     prefs.edit().apply {
                                         putString("UserName", name)
                                         putString("UserAgeGrp", ageGroup)
@@ -157,7 +160,19 @@ fun OnboardingScreen(prefs: SharedPreferences, onComplete: () -> Unit) {
                                     }.apply()
                                     onComplete()
                                 } else {
-                                    syncError = "Failed to sync to Supabase. Check internet connection!"
+                                    // Network/server failure — don't strand the
+                                    // user on this screen. Persist their
+                                    // answers locally so the app is fully
+                                    // usable, queue a deferred sync, and
+                                    // proceed. The flag is drained by
+                                    // MainViewModel.checkStatus on next
+                                    // launch (and after the next successful
+                                    // login). (B-26)
+                                    repository.markOnboardingPendingSync(
+                                        name, ageGroup, notificationVibe,
+                                        usageContext, neckHealth, checkIntervalMs
+                                    )
+                                    onComplete()
                                 }
                             }
                         }

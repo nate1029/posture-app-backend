@@ -8,10 +8,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="com.example.neckguard" />
-                  <option name="mobileSdkAppId" value="1:667846054837:android:f91ab2d9c1159868aa7ffc" />
-                  <option name="projectId" value="neckguard" />
-                  <option name="projectNumber" value="667846054837" />
+                  <option name="appId" value="app.nudgeup.android" />
+                  <option name="mobileSdkAppId" value="1:107493205403:android:a5cc53410e7f88ca6b6d3e" />
+                  <option name="projectId" value="nudgeup-4aa6e" />
+                  <option name="projectNumber" value="107493205403" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />

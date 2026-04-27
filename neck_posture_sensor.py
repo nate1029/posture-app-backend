@@ -376,6 +376,18 @@ class NeckPostureDetector:
                 is_phone_active=False
             )
 
+        # Lying in bed / screen facing down check
+        if sample.az < -2.0:
+            self.cf_filter.filtered_pitch = 90.0 # reset internally
+            return PostureReading(
+                timestamp_s=sample.timestamp_s,
+                phone_pitch_deg=90.0,
+                estimated_neck_deg=0,
+                state=PostureState.IDLE,
+                confidence=1.0,
+                is_phone_active=False
+            )
+
         # Sensor fusion: get smoothed pitch
         raw_pitch = self.cf_filter.update(sample)
 

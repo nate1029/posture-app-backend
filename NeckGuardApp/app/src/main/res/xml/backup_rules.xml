@@ -1,13 +1,25 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Auto-Backup rules (Android 6.0 – 11). On Android 12+, data_extraction_rules.xml
+  is honoured instead. We exclude any file that contains either:
+    • Encrypted blobs whose master key lives in the device KeyStore — these are
+      unreadable on a different device, so backing them up just produces a
+      corrupted prefs file on restore (silent login loss).
+    • Plaintext sensitive data (crash traces, fallback prefs, posture history).
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <!-- Encrypted auth tokens, user profile, gamification state -->
+    <exclude domain="sharedpref" path="neckguard_secure_prefs.xml"/>
+
+    <!-- Plaintext fallback used only when KeyStore is unavailable -->
+    <exclude domain="sharedpref" path="neckguard_prefs_fallback.xml"/>
+
+    <!-- Plaintext stack traces queued for upload -->
+    <exclude domain="sharedpref" path="neckguard_crashes.xml"/>
+
+    <!-- Posture history / sensor logs -->
+    <exclude domain="database" path="neckguard_db"/>
+    <exclude domain="database" path="neckguard_db-shm"/>
+    <exclude domain="database" path="neckguard_db-wal"/>
+    <exclude domain="database" path="neckguard_db-journal"/>
 </full-backup-content>

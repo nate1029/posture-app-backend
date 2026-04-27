@@ -7,7 +7,7 @@ import android.os.Build
 import android.util.Log
 
 /**
- * Dedicated BroadcastReceiver that restarts the NeckGuardService after it has been
+ * Dedicated BroadcastReceiver that restarts the NudgeUp Service after it has been
  * killed by the OS (e.g. user swipes notification on Android 14+).
  *
  * WHY A RECEIVER INSTEAD OF STARTING DIRECTLY FROM ALARM?
@@ -20,6 +20,12 @@ class ServiceRestartReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != "com.example.neckguard.RESTART_SERVICE") return
+
+        val prefs = com.example.neckguard.SecurePrefs.get(context)
+        if (prefs.getBoolean("isManuallyPaused", false)) {
+            Log.d("ServiceRestartReceiver", "Service is manually paused via UI. Ignoring OS restart relay.")
+            return
+        }
 
         Log.d("ServiceRestartReceiver", "Received restart signal — starting NeckGuardService")
 

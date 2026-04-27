@@ -13,26 +13,47 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.hardware.display.DisplayManager
 import android.os.Build
+import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
 import android.util.Log
+import android.view.Display
+import android.view.Surface
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.example.neckguard.R
 import com.example.neckguard.engine.PostureEngine
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
+/**
+ * Service-internal state machine. Distinct from [com.example.neckguard.ui.AppState],
+ * which models the UI's auth/onboarding lifecycle.
+ *
+ * Kept lean — the previously-listed CHECKING and RESULT_SHOWN entries were
+ * never produced by [NeckGuardService.transitionTo], and the only consumer
+ * silently no-op'd on them. Removed to make the actual state graph
+ * representable in the type system.
+ */
 enum class AppState {
-    DORMANT, MONITORING, ALERT_PENDING, CHECKING, RESULT_SHOWN
+    DORMANT, MONITORING, ALERT_PENDING
 }
 
 class NeckGuardService : Service(), SensorEventListener {
 
     private lateinit var sensorManager: SensorManager
+    private lateinit var displayManager: DisplayManager
     private var accelSensor: Sensor? = null
     private var gyroSensor: Sensor? = null
     private lateinit var prefs: SharedPreferences
+
+    // Cached screen rotation, updated by a DisplayListener instead of re-read every tick.
+    @Volatile private var cachedRotation: Int = Surface.ROTATION_0
 
     // State Variables
     private var currentState = AppState.DORMANT
@@ -56,23 +77,41 @@ class NeckGuardService : Service(), SensorEventListener {
     private var lastGy = 0f
     private var lastGz = 0f
 
+    // Dedicated scope for service-scoped background work (DB writes, etc.).
+    // Cancelled in onDestroy so we don't leak coroutines like GlobalScope would.
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     // ──────────────────────────────────────────────────────────────────
-    // Notification Watchdog: runs inside the live service process.
-    // If the user swipes the notification away (Android 14+ allows this),
-    // the *service* keeps running but the notification vanishes.
-    // This handler checks every 8 seconds and re-posts if missing.
+    // Notification Watchdog.
+    // Runs on a dedicated background HandlerThread (NOT the main thread) so it
+    // cannot contend with UI or sensor callbacks. Interval bumped from 8s → 60s
+    // since a transiently-missing silent notification is not catastrophic.
     // ──────────────────────────────────────────────────────────────────
-    private val watchdogHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var watchdogThread: HandlerThread? = null
+    private var watchdogHandler: Handler? = null
     private val watchdogRunnable = object : Runnable {
         override fun run() {
             if (isIntentionallyStopped) return
-            val manager = getSystemService(NotificationManager::class.java)
-            val hasOurNotif = manager.activeNotifications.any { it.id == NOTIFICATION_ID }
-            if (!hasOurNotif) {
-                Log.d(TAG, "Watchdog: notification was swiped — re-posting")
-                manager.notify(NOTIFICATION_ID, createPersistentNotification())
+            try {
+                val manager = getSystemService(NotificationManager::class.java)
+                val hasOurNotif = manager.activeNotifications.any { it.id == NOTIFICATION_ID }
+                if (!hasOurNotif) {
+                    Log.d(TAG, "Watchdog: notification was swiped — re-posting")
+                    manager.notify(NOTIFICATION_ID, createPersistentNotification())
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "Watchdog tick failed: ${t.message}")
             }
-            watchdogHandler.postDelayed(this, 8000)
+            watchdogHandler?.postDelayed(this, WATCHDOG_INTERVAL_MS)
+        }
+    }
+
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) {}
+        override fun onDisplayRemoved(displayId: Int) {}
+        override fun onDisplayChanged(displayId: Int) {
+            cachedRotation = displayManager.getDisplay(Display.DEFAULT_DISPLAY)?.rotation
+                ?: Surface.ROTATION_0
         }
     }
 
@@ -83,7 +122,11 @@ class NeckGuardService : Service(), SensorEventListener {
         private const val ALERT_CHANNEL_ID = "neckguard_alert_channel"
         private const val NOTIFICATION_ID = 101
         private const val ALERT_NOTIFICATION_ID = 202
-        private const val BATCH_LATENCY_US = 30_000_000 // 30s batching
+        // Batch sensor deliveries at most 2 seconds apart. Previously 30s, which
+        // meant `PostureEngine.currentPitch` could be up to 30 seconds stale when
+        // CheckPostureActivity read it — directly causing "late / wrong" alerts.
+        private const val BATCH_LATENCY_US = 2_000_000
+        private const val WATCHDOG_INTERVAL_MS = 60_000L
 
         fun getUsageThresholdMs(prefs: SharedPreferences): Long {
             return prefs.getLong("IntervalPreferenceMs", 30 * 60 * 1000L)
@@ -107,45 +150,53 @@ class NeckGuardService : Service(), SensorEventListener {
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "Service Created")
-        com.example.neckguard.CrashReporter.initialize(this)
+        // CrashReporter is now initialized once in the Application class. No need to re-init here.
 
-        // EncryptedSharedPreferences can throw if the device is still locked
-        // (hardware-backed key unavailable). Fall back to plain prefs so
-        // the service can still boot and monitor posture.
-        prefs = try {
-            com.example.neckguard.SecurePrefs.get(this)
-        } catch (e: Exception) {
-            Log.w(TAG, "EncryptedSharedPreferences unavailable, falling back: ${e.message}")
-            getSharedPreferences("neckguard_prefs_fallback", Context.MODE_PRIVATE)
-        }
+        // SecurePrefs is now a cached singleton; fallback handling lives inside it.
+        prefs = com.example.neckguard.SecurePrefs.get(this)
         cumulativeUsageTimerMs = prefs.getLong("CumulativeUsageMs", 0L)
 
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         accelSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         gyroSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+
+        // Cache DisplayManager + initial rotation once. Previously we re-resolved the
+        // display on every accelerometer event (~every 20 ms), which was an expensive
+        // binder call and constant allocation.
+        displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        cachedRotation = displayManager.getDisplay(Display.DEFAULT_DISPLAY)?.rotation
+            ?: Surface.ROTATION_0
+        displayManager.registerDisplayListener(displayListener, null)
+
         createNotificationChannels()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent == null) {
-            // OS restarted us via START_STICKY or our AlarmManager relay.
-            // The service was legitimately running before — skip auth, just resume.
-            Log.w(TAG, "Service restarted by OS (START_STICKY) — resuming immediately.")
-        } else if (intent.action == "STOP_SERVICE") {
+        // Pause from the persistent-notification action — short-circuit before
+        // any auth-check / foreground-promotion work.
+        if (intent?.action == "STOP_SERVICE") {
             Log.d(TAG, "User explicitly paused the shield.")
             isIntentionallyStopped = true
-            watchdogHandler.removeCallbacksAndMessages(null)
+            stopWatchdog()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
-        } else {
-            // Normal user-initiated start — verify auth.
-            val userRepo = com.example.neckguard.data.UserRepository(prefs)
-            if (!userRepo.hydrateSession() || !userRepo.hasCompletedOnboarding()) {
-                Log.w(TAG, "Auth invalid or onboarding incomplete. Killing ghost service.")
-                stopSelf()
-                return START_NOT_STICKY
-            }
+        }
+
+        // Auth check runs on EVERY entry point — explicit user start, OS
+        // redelivery (intent == null branch of START_STICKY), and alarm-relay
+        // restart. Previously the null-intent branch bypassed this, so a
+        // user who logged out could still have a "ghost service" running
+        // under their persistent notification after the OS redelivered the
+        // start. (B-13)
+        if (intent == null) {
+            Log.w(TAG, "Service restarted by OS (START_STICKY) — re-checking session.")
+        }
+        val userRepo = com.example.neckguard.data.UserRepository(prefs)
+        if (!userRepo.hydrateSession() || !userRepo.hasCompletedOnboarding()) {
+            Log.w(TAG, "Auth invalid or onboarding incomplete. Killing ghost service.")
+            stopSelf()
+            return START_NOT_STICKY
         }
 
         isIntentionallyStopped = false
@@ -156,10 +207,7 @@ class NeckGuardService : Service(), SensorEventListener {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        // Start the watchdog that re-posts the notification if swiped
-        watchdogHandler.removeCallbacksAndMessages(null)
-        watchdogHandler.postDelayed(watchdogRunnable, 8000)
-
+        startWatchdog()
         registerScreenReceiver()
         transitionTo(AppState.MONITORING)
 
@@ -191,7 +239,15 @@ class NeckGuardService : Service(), SensorEventListener {
                 addAction(Intent.ACTION_SCREEN_ON)
                 addAction(Intent.ACTION_SCREEN_OFF)
             }
-            registerReceiver(screenReceiver, filter)
+            // Android 14 (API 34) requires every dynamic receiver to specify whether it is
+            // exported. SCREEN_ON/OFF are protected system broadcasts so RECEIVER_NOT_EXPORTED
+            // is correct — only the system can deliver them.
+            ContextCompat.registerReceiver(
+                this,
+                screenReceiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
         }
     }
 
@@ -213,14 +269,28 @@ class NeckGuardService : Service(), SensorEventListener {
                     prefs.edit().putLong("CumulativeUsageMs", cumulativeUsageTimerMs).apply()
 
                     if (duration > 5_000L) {
-                        val dao = com.example.neckguard.data.local.NeckGuardDatabase.getDatabase(this).postureLogDao()
-                        val log = com.example.neckguard.data.local.PostureLog(
-                            timestampStartMs = screenOnSessionStart,
-                            durationMs = duration,
-                            healthyMs = sessionHealthyMs,
-                            slouchedMs = sessionSlouchedMs
-                        )
-                        GlobalScope.launch(Dispatchers.IO) { dao.insertLog(log) }
+                        val appCtx = applicationContext
+                        val healthy = sessionHealthyMs
+                        val slouched = sessionSlouchedMs
+                        val sessionStart = screenOnSessionStart
+                        // Run DB work on our service-scoped CoroutineScope instead of
+                        // GlobalScope so it's cancelled if the service dies.
+                        serviceScope.launch {
+                            try {
+                                val dao = com.example.neckguard.data.local.NeckGuardDatabase
+                                    .getDatabase(appCtx).postureLogDao()
+                                val log = com.example.neckguard.data.local.PostureLog(
+                                    sessionStart,
+                                    duration,
+                                    healthy,
+                                    slouched,
+                                    false
+                                )
+                                dao.insertLog(log)
+                            } catch (t: Throwable) {
+                                Log.w(TAG, "Failed to persist posture log: ${t.message}")
+                            }
+                        }
                     }
 
                     screenOnSessionStart = 0L
@@ -232,13 +302,14 @@ class NeckGuardService : Service(), SensorEventListener {
             AppState.MONITORING -> {
                 Log.d(TAG, "Screen ON. Registering sensors.")
                 screenOnSessionStart = System.currentTimeMillis()
-                accelSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI, BATCH_LATENCY_US) }
-                gyroSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI, BATCH_LATENCY_US) }
+                // SENSOR_DELAY_NORMAL (~200 ms) is plenty for a posture filter. UI rate (~60 Hz)
+                // was wasteful given a 2s batch window still produces dozens of samples to filter.
+                accelSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL, BATCH_LATENCY_US) }
+                gyroSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL, BATCH_LATENCY_US) }
             }
             AppState.ALERT_PENDING -> {
                 sendPostureAlert()
             }
-            else -> {}
         }
         currentState = newState
     }
@@ -253,13 +324,10 @@ class NeckGuardService : Service(), SensorEventListener {
             lastGy = event.values[1]
             lastGz = event.values[2]
         } else if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
-            val displayManager = getSystemService(Context.DISPLAY_SERVICE) as android.hardware.display.DisplayManager
-            val rotation = displayManager.getDisplay(android.view.Display.DEFAULT_DISPLAY)?.rotation ?: android.view.Surface.ROTATION_0
-
             val state = PostureEngine.processSensorTick(
                 ax = event.values[0], ay = event.values[1], az = event.values[2],
                 gx = lastGx, gy = lastGy, gz = lastGz,
-                timestampNS = event.timestamp, surfaceRotation = rotation
+                timestampNS = event.timestamp, surfaceRotation = cachedRotation
             )
 
             val now = System.currentTimeMillis()
@@ -272,6 +340,14 @@ class NeckGuardService : Service(), SensorEventListener {
                 }
             }
             lastTickMs = now
+
+            // Periodically flush partial session data to Room so the
+            // dashboard score updates while the screen is on, not just
+            // when it turns off.
+            if (lastFlushMs == 0L) lastFlushMs = now
+            if (now - lastFlushMs >= FLUSH_INTERVAL_MS) {
+                flushCurrentSessionToDb()
+            }
 
             if (state == PostureEngine.PostureState.POOR) {
                 if (poorPostureSessionStart == 0L) poorPostureSessionStart = now
@@ -297,6 +373,12 @@ class NeckGuardService : Service(), SensorEventListener {
     private fun sendPostureAlert() {
         Log.d(TAG, "FIRING POSTURE ALERT!")
 
+        // Flush the current session's posture data to Room BEFORE resetting
+        // the counters. This is what makes the dashboard score update in
+        // real-time — previously data only landed in the DB when the screen
+        // turned OFF, so the score was frozen while the user was looking at it.
+        flushCurrentSessionToDb()
+
         lastAlertTimeMs = System.currentTimeMillis()
         poorPostureSessionStart = 0L
         cumulativeUsageTimerMs = 0L
@@ -319,9 +401,58 @@ class NeckGuardService : Service(), SensorEventListener {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
+            // Auto-dismiss if the user doesn't tap within 2 minutes.
+            // If they DO tap, CheckPostureActivity replaces this with
+            // the result notification (same ID 202), which has its own
+            // 90-second timeout.
+            .setTimeoutAfter(120_000L)
 
         val manager = getSystemService(NotificationManager::class.java)
         manager.notify(ALERT_NOTIFICATION_ID, builder.build())
+    }
+
+    // ─────────── Periodic score flush ───────────
+
+    private var lastFlushMs = 0L
+    private val FLUSH_INTERVAL_MS = 5 * 60 * 1000L // 5 minutes
+
+    /**
+     * Writes the current screen-on session's accumulated healthy/slouched
+     * time to Room as a partial log entry, WITHOUT resetting the session
+     * counters. This makes the dashboard score update in near-real-time
+     * while the screen is on.
+     *
+     * Uses REPLACE conflict strategy (PostureLogDao.insertLog) keyed on
+     * `timestampStartMs`, so repeated flushes for the same session just
+     * overwrite the previous partial row with the latest cumulative values.
+     * When the screen eventually turns OFF and DORMANT fires, it writes the
+     * final complete row with the same `timestampStartMs` key — naturally
+     * replacing the partial one.
+     */
+    private fun flushCurrentSessionToDb() {
+        if (screenOnSessionStart == 0L) return
+        val now = System.currentTimeMillis()
+        val duration = now - screenOnSessionStart
+        if (duration < 5_000L) return
+
+        val appCtx = applicationContext
+        val healthy = sessionHealthyMs
+        val slouched = sessionSlouchedMs
+        val sessionStart = screenOnSessionStart
+
+        serviceScope.launch {
+            try {
+                val dao = com.example.neckguard.data.local.NeckGuardDatabase
+                    .getDatabase(appCtx).postureLogDao()
+                val log = com.example.neckguard.data.local.PostureLog(
+                    sessionStart, duration, healthy, slouched, false
+                )
+                dao.insertLog(log)
+            } catch (t: Throwable) {
+                Log.w(TAG, "Failed to flush partial posture log: ${t.message}")
+            }
+        }
+        lastFlushMs = now
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
@@ -331,9 +462,14 @@ class NeckGuardService : Service(), SensorEventListener {
 
     override fun onDestroy() {
         Log.d(TAG, "Service Destroyed")
-        watchdogHandler.removeCallbacksAndMessages(null)
-        screenReceiver?.let { unregisterReceiver(it) }
+        stopWatchdog()
+        screenReceiver?.let {
+            try { unregisterReceiver(it) } catch (_: IllegalArgumentException) {}
+        }
+        screenReceiver = null
+        try { displayManager.unregisterDisplayListener(displayListener) } catch (_: Throwable) {}
         sensorManager.unregisterListener(this)
+        serviceScope.cancel()
 
         if (!isIntentionallyStopped) {
             scheduleRestart()
@@ -365,15 +501,31 @@ class NeckGuardService : Service(), SensorEventListener {
         }
     }
 
+    // ─────────── Watchdog lifecycle ───────────
+
+    private fun startWatchdog() {
+        stopWatchdog()
+        val thread = HandlerThread("NeckGuardWatchdog").apply { start() }
+        val handler = Handler(thread.looper)
+        watchdogThread = thread
+        watchdogHandler = handler
+        handler.postDelayed(watchdogRunnable, WATCHDOG_INTERVAL_MS)
+    }
+
+    private fun stopWatchdog() {
+        watchdogHandler?.removeCallbacksAndMessages(null)
+        watchdogHandler = null
+        watchdogThread?.quitSafely()
+        watchdogThread = null
+    }
+
     // ─────────── Notification helpers ───────────
 
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = getSystemService(NotificationManager::class.java)
 
-            // IMPORTANCE_MIN puts the notification in the 'Silent' section
-            // In the Silent section, Android NEVER auto-expands notifications.
-            val bgChannel = NotificationChannel(CHANNEL_ID, "NeckGuard Active Status", NotificationManager.IMPORTANCE_MIN).apply {
+            val bgChannel = NotificationChannel(CHANNEL_ID, "NudgeUp Active Status", NotificationManager.IMPORTANCE_MIN).apply {
                 description = "Keeps the background sensor engine alive."
                 setShowBadge(false)
             }
@@ -388,14 +540,12 @@ class NeckGuardService : Service(), SensorEventListener {
     }
 
     private fun createPersistentNotification(): Notification {
-        // "Pause Shield" intent — sends STOP_SERVICE so watchdog + alarm are skipped
         val pauseIntent = Intent(this, NeckGuardService::class.java).apply { action = "STOP_SERVICE" }
         val pausePendingIntent = android.app.PendingIntent.getService(
             this, 2, pauseIntent,
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Tapping the notification body opens the app
         val openAppIntent = Intent(this, com.example.neckguard.MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -405,17 +555,13 @@ class NeckGuardService : Service(), SensorEventListener {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("NeckGuard Active")
+            .setContentTitle("NudgeUp Active")
             .setContentText("Monitoring posture silently")
             .setSmallIcon(android.R.drawable.ic_menu_compass)
-            // PRIORITY_MIN ensures it behaves as a silent background notification on older API levels too
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setOngoing(true)
             .setContentIntent(openAppPendingIntent)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            // Adding the native action button. Because it's a MIN importance notification,
-            // the OS will keep it collapsed in the Silent section by default,
-            // revealing the button only when the user manually taps the expand arrow.
             .addAction(android.R.drawable.ic_media_pause, "Pause Shield", pausePendingIntent)
             .build()
     }

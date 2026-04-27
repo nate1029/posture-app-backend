@@ -13,8 +13,8 @@ class BootReceiver : BroadcastReceiver() {
             val repo = com.example.neckguard.data.UserRepository(prefs)
             
             // Only restart the background privacy tracker if the user is ACTUALLY logged in and set up
-            if (repo.hydrateSession() && repo.hasCompletedOnboarding()) {
-                Log.d("BootReceiver", "Device rebooted. Restarting NeckGuard Service silently in background!")
+            if (repo.hydrateSession() && repo.hasCompletedOnboarding() && !prefs.getBoolean("isManuallyPaused", false)) {
+                Log.d("BootReceiver", "Device rebooted. Restarting NudgeUp Service silently in background!")
                 
                 val serviceIntent = Intent(context, NeckGuardService::class.java)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

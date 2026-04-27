@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<defaultsMap>
+    <!-- Nudge messages that can be updated remotely without app updates -->
+    <entry>
+        <key>nudge_critical_instruction</key>
+        <value>Raise your phone to eye level right now</value>
+    </entry>
+    <entry>
+        <key>nudge_critical_tags</key>
+        <value>🔴 Critical,⏱ 5 sec</value>
+    </entry>
+    <entry>
+        <key>nudge_critical_reasoning</key>
+        <value>Fixing your phone angle prevents text neck.</value>
+    </entry>
+    <entry>
+        <key>nudge_moderate_instruction</key>
+        <value>Tuck your chin slightly inwards for 10s</value>
+    </entry>
+    <entry>
+        <key>nudge_moderate_tags</key>
+        <value>🔵 Moderate,⏱ 10 sec,Cervical</value>
+    </entry>
+    <entry>
+        <key>nudge_moderate_reasoning</key>
+        <value>Chin tucks strengthen deep neck flexors.</value>
+    </entry>
+
+    <!-- Detection messages -->
+    <entry>
+        <key>detect_bad_title</key>
+        <value>Prolonged slouch detected yesterday</value>
+    </entry>
+    <entry>
+        <key>detect_bad_severity</key>
+        <value>Spinal imbalance • High severity</value>
+    </entry>
+    <entry>
+        <key>detect_good_title</key>
+        <value>Optimal alignment maintained</value>
+    </entry>
+    <entry>
+        <key>detect_good_subtitle</key>
+        <value>Maintained perfect spine yesterday.</value>
+    </entry>
+    <entry>
+        <key>detect_good_severity</key>
+        <value>Excellent • No action needed</value>
+    </entry>
+
+    <!-- Feature flags -->
+    <entry>
+        <key>leaderboard_enabled</key>
+        <value>false</value>
+    </entry>
+    <entry>
+        <key>friends_enabled</key>
+        <value>false</value>
+    </entry>
+
+    <!-- Scoring thresholds -->
+    <entry>
+        <key>slouch_angle_threshold</key>
+        <value>25</value>
+    </entry>
+    <entry>
+        <key>points_per_exercise</key>
+        <value>50</value>
+    </entry>
+
+    <!-- Emergency broadcast message (empty = no alert) -->
+    <entry>
+        <key>emergency_message</key>
+        <value></value>
+    </entry>
+</defaultsMap>

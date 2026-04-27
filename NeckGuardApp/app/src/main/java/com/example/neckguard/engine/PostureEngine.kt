@@ -1,12 +1,13 @@
 package com.example.neckguard.engine
 
 import android.util.Log
+import com.example.neckguard.RemoteConfigManager
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.sqrt
 
 /**
- * Pure Kotlin implementation of the NeckGuard sensory heuristics.
+ * Pure Kotlin implementation of the NudgeUp sensory heuristics.
  * Handles the physics, math, and motion rejection without any OS dependencies.
  */
 object PostureEngine {
@@ -16,7 +17,12 @@ object PostureEngine {
     private const val NECK_SCALE = 0.82f
     private const val ALPHA = 0.96f // Complementary filter constant
 
-    var currentPitch: Float = 90f // Start assuming phone is flat on desk
+    // @Volatile because [currentPitch] is written on the sensor thread and
+    // read by NeckGuardService.sendPostureAlert() which sometimes runs on a
+    // different thread (e.g. via the alarm-restart path). Without the
+    // happens-before edge, ARM can return a stale value to readers on
+    // another core.
+    @Volatile var currentPitch: Float = 90f // Start assuming phone is flat on desk
     private var lastTimestampNS: Long = 0L
 
     enum class PostureState {
@@ -46,44 +52,54 @@ object PostureEngine {
             return PostureState.UNKNOWN
         }
 
+        // 1.5 Lying in bed / Screen facing down rejection
+        // Z-axis points out from the screen. If acceleration on Z is strongly negative,
+        // the screen is facing the floor (e.g. user lying on back holding phone above face).
+        if (az < -2.0f) {
+            currentPitch = 90f // Reset filter to prevent weird jumps when sitting back up
+            // Also clear the timestamp so the very next non-face-down sample
+            // re-seeds the complementary filter from accelPitch directly,
+            // instead of integrating a multi-second `dt * gyro` term that
+            // would produce a wild pitch and a spurious POOR/GOOD reading.
+            lastTimestampNS = 0L
+            return PostureState.IDLE
+        }
+
         // 2. Landscape Axis Compensation
         val pureGravityY: Float
+        val pureGravityZ = az // Consistent for screen-depth
         val gyroX: Float
 
         when (surfaceRotation) {
             android.view.Surface.ROTATION_90 -> {
-                pureGravityY = -ax
+                pureGravityY = ax
                 gyroX = -gy
             }
             android.view.Surface.ROTATION_270 -> {
-                pureGravityY = ax
+                pureGravityY = -ax
                 gyroX = gy
             }
             android.view.Surface.ROTATION_180 -> {
-                pureGravityY = ay
+                pureGravityY = -ay
                 gyroX = -gx
             }
             else -> {
-                // ROTATION_0 (Portrait)
-                pureGravityY = -ay
+                // ROTATION_0 (Portrait): positive Y is UP along the screen.
+                // Accelerometer pushes UP against gravity, so ay is +9.81 when standing upright.
+                pureGravityY = ay
                 gyroX = gx
             }
         }
 
-        // 3. Accelerometer absolute pitch (EXACT neck_posture_sensor.py implementation)
-        // Python: cos_angle = max(-1.0, min(1.0, -ay / magnitude))
-        //         tilt = math.degrees(math.acos(cos_angle))
-        val safeMag = if (magnitude < 0.5f) 0.5f else magnitude
-        val cosAngle = (-pureGravityY / safeMag).coerceIn(-1.0f, 1.0f)
-        val accelPitch = Math.toDegrees(kotlin.math.acos(cosAngle.toDouble())).toFloat()
+        // 3. Accelerometer signed pitch
+        // atan2 mathematically correctly distinguishes leaning FORWARD (positive Z) vs leaning BACKWARD (negative Z)
+        val accelPitch = Math.toDegrees(kotlin.math.atan2(pureGravityZ.toDouble(), pureGravityY.toDouble())).toFloat()
 
         // 4. Complementary Filter (Gyro + Accel)
         if (lastTimestampNS != 0L) {
             val dt = (timestampNS - lastTimestampNS) * 1.0f / 1_000_000_000.0f
-            // In Android, tilting the phone backwards (top away from user) yields a NEGATIVE gx.
-            // But accelPitch increases (0 to 90) when tilted backwards. 
-            // We must invert gx to prevent sensory fighting.
-            val gyroDegrees = Math.toDegrees(-gyroX.toDouble()).toFloat()
+            // Gyroscope is rad/s.
+            val gyroDegrees = Math.toDegrees(gyroX.toDouble()).toFloat()
             currentPitch = ALPHA * (currentPitch + gyroDegrees * dt) + (1.0f - ALPHA) * accelPitch
         } else {
             currentPitch = accelPitch // Seed initial value
@@ -94,18 +110,20 @@ object PostureEngine {
             currentPitch = accelPitch
         }
 
-        // Safety bound
-        currentPitch = currentPitch.coerceIn(0f, 90f)
+        // Safety bound: allow negative (leaning back) but cap extremes
+        currentPitch = currentPitch.coerceIn(-90f, 90f)
 
         // 5. Physiological Neck Mapping
-        val neckFlexion = currentPitch * NECK_SCALE
+        // Floor negative pitch to 0. Leaning backward is 0 flexion (perfect posture).
+        val neckFlexion = if (currentPitch < 0) 0f else currentPitch * NECK_SCALE
 
-        // 6. Classification
+        // 6. Classification — moderate/poor boundary is configurable via Remote Config
+        val slouchThreshold = RemoteConfigManager.slouchAngleThreshold
         return when {
-            currentPitch > 75f -> PostureState.IDLE // Phone resting flat
-            neckFlexion < 15f -> PostureState.GOOD
-            neckFlexion < 35f -> PostureState.MODERATE
-            else -> PostureState.POOR
+            currentPitch > 75f        -> PostureState.IDLE // Phone resting flat
+            neckFlexion < 15f         -> PostureState.GOOD
+            neckFlexion < slouchThreshold -> PostureState.MODERATE
+            else                      -> PostureState.POOR
         }
     }
     
