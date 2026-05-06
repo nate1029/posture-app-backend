@@ -60,57 +60,6 @@ object FirebaseAuthManager {
         }
     }
 
-    // ─── Magic Link (Passwordless Email Sign-In) ─────────────────────────
-
-    /**
-     * Sends a Magic Link sign-in email to [email].
-     * The user clicks the link → app opens → [handleEmailLink] finishes auth.
-     * Returns null on success, error string on failure.
-     */
-    suspend fun sendMagicLink(context: Context, email: String): String? {
-        return try {
-            val actionCodeSettings = com.google.firebase.auth.ActionCodeSettings.newBuilder()
-                .setUrl("https://nudgeup-4aa6e.firebaseapp.com/login")
-                .setHandleCodeInApp(true)
-                .setAndroidPackageName("app.nudgeup.android", true, null)
-                .build()
-
-            auth.sendSignInLinkToEmail(email, actionCodeSettings).await()
-
-            // Persist the email so we can complete sign-in after the user
-            // clicks the link (the app may be killed in between).
-            SecurePrefs.get(context)
-                .edit().putString(PREF_MAGIC_LINK_EMAIL, email).apply()
-
-            null // success
-        } catch (e: Exception) {
-            android.util.Log.e("FirebaseAuthManager", "Magic link send failed", e)
-            "Couldn't send the sign-in link: ${e.localizedMessage}"
-        }
-    }
-
-    /**
-     * Completes the Magic Link sign-in when the app receives a deep link.
-     * Call this from [MainActivity.onNewIntent] or [MainActivity.onCreate].
-     * Returns null on success, error string on failure.
-     */
-    suspend fun handleEmailLink(context: Context, link: String): String? {
-        if (!auth.isSignInWithEmailLink(link)) return "Invalid sign-in link."
-
-        val prefs = SecurePrefs.get(context)
-        val email = prefs.getString(PREF_MAGIC_LINK_EMAIL, null)
-            ?: return "We don't know which email this link is for. Please enter your email and request a new link."
-
-        return try {
-            auth.signInWithEmailLink(email, link).await()
-            prefs.edit().remove(PREF_MAGIC_LINK_EMAIL).apply()
-            bridgeToSupabase()
-            null
-        } catch (e: Exception) {
-            android.util.Log.e("FirebaseAuthManager", "Magic link sign-in failed", e)
-            "Sign-in failed: ${e.localizedMessage}"
-        }
-    }
 
     // ─── Google Sign-In ──────────────────────────────────────────────────
 

@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
+import androidx.compose.animation.core.animateFloat
 import com.example.neckguard.ui.MainViewModel
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -62,8 +63,7 @@ class MainActivity : ComponentActivity() {
         val dao = com.example.neckguard.data.local.NeckGuardDatabase.getDatabase(this).postureLogDao()
         viewModel = androidx.lifecycle.ViewModelProvider(this, com.example.neckguard.ui.MainViewModelFactory(repository, dao))[com.example.neckguard.ui.MainViewModel::class.java]
         
-        // Handle magic link if the app was opened via an email sign-in link
-        handleMagicLinkIntent(intent)
+
 
         setContent {
             val appState by viewModel.appState.collectAsState()
@@ -132,29 +132,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        handleMagicLinkIntent(intent)
-    }
-
-    /**
-     * Checks if the incoming intent contains a Firebase Magic Link and,
-     * if so, completes the passwordless sign-in flow.
-     */
-    private fun handleMagicLinkIntent(intent: Intent?) {
-        val link = intent?.data?.toString() ?: return
-        if (!com.google.firebase.auth.FirebaseAuth.getInstance().isSignInWithEmailLink(link)) return
-
-        kotlinx.coroutines.MainScope().launch {
-            val error = com.example.neckguard.FirebaseAuthManager.handleEmailLink(this@MainActivity, link)
-            if (error == null) {
-                viewModel.checkStatus()
-            } else {
-                android.util.Log.e("MainActivity", "Magic link sign-in error: $error")
-                // The user will still see the auth screen; the error is logged.
-            }
-        }
-    }
 
 }
 
@@ -529,15 +506,36 @@ fun HomeHeaderCmp(userName: String, dashState: com.example.neckguard.ui.Dashboar
                 }
             }
             Spacer(modifier = Modifier.height(10.dp))
-            Row(modifier = Modifier.background(FinalWhite.copy(alpha=0.2f), shape = RoundedCornerShape(20.dp)).clickable { onToggle(!dashState.isAppActive) }.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition()
+            val dotAlpha by infiniteTransition.animateFloat(
+                initialValue = 0.3f,
+                targetValue = 1f,
+                animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                    animation = androidx.compose.animation.core.tween(1000, easing = androidx.compose.animation.core.LinearEasing),
+                    repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+                )
+            )
+
+            val activeBgColor = androidx.compose.ui.graphics.Color(0xFFC8E6C9)
+            val activeContentColor = androidx.compose.ui.graphics.Color.Black
+            val pausedBgColor = FinalWhite.copy(alpha=0.1f)
+            val pausedContentColor = androidx.compose.ui.graphics.Color(0xFFF44336)
+            
+            Row(modifier = Modifier
+                .background(if (dashState.isAppActive) activeBgColor else pausedBgColor, shape = RoundedCornerShape(20.dp))
+                .border(1.dp, if (dashState.isAppActive) activeContentColor else pausedContentColor, RoundedCornerShape(20.dp))
+                .clickable { onToggle(!dashState.isAppActive) }
+                .padding(horizontal = 10.dp, vertical = 6.dp), 
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 if (dashState.isAppActive) {
-                    Box(modifier = Modifier.size(7.dp).background(FinalWhite, CircleShape))
+                    Box(modifier = Modifier.size(7.dp).background(activeContentColor.copy(alpha = dotAlpha), CircleShape))
                     Spacer(modifier = Modifier.width(5.dp))
-                    Text("MONITORING ACTIVE", fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalWhite, letterSpacing = 0.06.sp)
+                    Text("MONITORING ACTIVE", fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = activeContentColor, letterSpacing = 0.06.sp)
                 } else {
-                    Box(modifier = Modifier.size(7.dp).background(FinalWhite.copy(alpha=0.5f), CircleShape))
+                    Box(modifier = Modifier.size(7.dp).background(pausedContentColor.copy(alpha = 0.5f), CircleShape))
                     Spacer(modifier = Modifier.width(5.dp))
-                    Text("PAUSED (TAP TO RESUME)", fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalWhite.copy(alpha=0.8f), letterSpacing = 0.06.sp)
+                    Text("PAUSED (TAP TO RESUME)", fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = pausedContentColor, letterSpacing = 0.06.sp)
                 }
             }
         }
