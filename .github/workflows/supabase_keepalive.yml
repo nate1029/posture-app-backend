@@ -1,0 +1,30 @@
+name: Supabase Keep-Alive Ping
+
+on:
+  schedule:
+    # Runs every 3 days at midnight UTC (well within the 7-day inactivity window)
+    - cron: "0 0 */3 * *"
+  workflow_dispatch: # Also allows manual trigger from GitHub Actions UI
+
+jobs:
+  ping:
+    name: Ping Supabase REST API
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send keep-alive request to Supabase
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
+
+          echo "Supabase responded with HTTP $STATUS"
+
+          # Any 2xx or 4xx means the server is awake and responding.
+          # A 5xx or 0 would indicate it is truly down.
+          if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 500 ]; then
+            echo "✅ Supabase is alive."
+          else
+            echo "❌ Supabase may be down or hibernating. HTTP $STATUS"
+            exit 1
+          fi
