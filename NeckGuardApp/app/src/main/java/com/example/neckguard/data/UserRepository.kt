@@ -3,7 +3,7 @@ package com.example.neckguard.data
 import android.content.SharedPreferences
 import com.example.neckguard.SupabaseClient
 
-class UserRepository(private val prefs: SharedPreferences) {
+class UserRepository(val prefs: SharedPreferences) {
 
     /**
      * Checks if the user is authenticated. Firebase Auth is the source of
@@ -37,9 +37,23 @@ class UserRepository(private val prefs: SharedPreferences) {
         prefs.edit().putBoolean("OnboardingComplete", true).apply()
     }
 
+    fun hasSeenAppIntro(): Boolean {
+        return prefs.getBoolean("AppIntroSeen", false)
+    }
+
+    fun markAppIntroSeen() {
+        prefs.edit().putBoolean("AppIntroSeen", true).apply()
+    }
+
     fun logout(context: android.content.Context) {
+        // Clear all user-specific data so a different account
+        // doesn't inherit the previous user's profile/onboarding state.
+        // We preserve only device-level flags like AppIntroSeen.
+        val introSeen = prefs.getBoolean("AppIntroSeen", false)
+        prefs.edit().clear().apply()
+        if (introSeen) prefs.edit().putBoolean("AppIntroSeen", true).apply()
+
         com.example.neckguard.FirebaseAuthManager.signOut(context)
-        // clearSession also wipes prefs via the persistence hook
     }
 
     fun saveTokens(accessToken: String, refreshToken: String?, userId: String) {
@@ -102,16 +116,26 @@ class UserRepository(private val prefs: SharedPreferences) {
         if (current.add(id)) writeListPref(KEY_COMPLETED_EX_TODAY, current)
     }
 
+    val manualChecksTotalToday: Int get() = prefs.getInt("ManualChecksTotalToday", 0)
+    fun setManualChecksTotalToday(count: Int) = prefs.edit().putInt("ManualChecksTotalToday", count).apply()
+
+    val manualChecksBadToday: Int get() = prefs.getInt("ManualChecksBadToday", 0)
+    fun setManualChecksBadToday(count: Int) = prefs.edit().putInt("ManualChecksBadToday", count).apply()
+
     /**
      * Reads a string-set pref, transparently migrating any legacy CSV value
      * left over from an earlier build. Returns the set as a List for
      * positional use (assigned-exercises display order).
      */
     private fun readListPref(key: String): List<String> {
-        val asSet = prefs.getStringSet(key, null)
-        if (asSet != null) return asSet.toList()
+        try {
+            val asSet = prefs.getStringSet(key, null)
+            if (asSet != null) return asSet.toList()
+        } catch (e: ClassCastException) {
+            // It's the legacy CSV format; fall through to migration below.
+        }
 
-        val legacy = prefs.getString(key, null)
+        val legacy = try { prefs.getString(key, null) } catch (e: ClassCastException) { null }
         if (legacy.isNullOrBlank()) return emptyList()
 
         // Migrate the legacy CSV value over to a string-set, in place.
@@ -165,8 +189,12 @@ class UserRepository(private val prefs: SharedPreferences) {
         val ctx = prefs.getString("UserContext", "") ?: ""
         val health = prefs.getString("UserHealth", "") ?: ""
         val interval = prefs.getLong("IntervalPreferenceMs", 30 * 60 * 1000L)
+        val lifetimePoints = prefs.getInt("LifetimePoints", 0)
+        val totalExercisesDone = prefs.getInt("TotalExercisesDone", 0)
+        val assigned = assignedExercisesList
+        val completed = completedExercisesTodayList
 
-        val ok = SupabaseClient.saveProfile(name, age, vibe, ctx, health, interval)
+        val ok = SupabaseClient.saveProfile(name, age, vibe, ctx, health, interval, lifetimePoints, totalExercisesDone, assigned, completed)
         if (ok) setPendingProfileSync(false)
         return ok
     }
@@ -208,8 +236,25 @@ class UserRepository(private val prefs: SharedPreferences) {
                     putString("UserContext", profile.optString("usage_context", ""))
                     putString("UserHealth", profile.optString("neck_health", ""))
                     putLong("IntervalPreferenceMs", profile.optLong("check_interval_ms", 30 * 60 * 1000L))
+                    putInt("LifetimePoints", profile.optInt("lifetime_points", 0))
+                    putInt("TotalExercisesDone", profile.optInt("total_exercises_done", 0))
                     putBoolean("OnboardingComplete", true)
                 }.apply()
+                
+                val assignedJson = profile.optJSONArray("assigned_exercises")
+                if (assignedJson != null) {
+                    val assignedList = mutableListOf<String>()
+                    for (i in 0 until assignedJson.length()) { assignedList.add(assignedJson.getString(i)) }
+                    setAssignedExercisesList(assignedList)
+                }
+
+                val completedJson = profile.optJSONArray("completed_exercises_today")
+                if (completedJson != null) {
+                    val completedSet = mutableSetOf<String>()
+                    for (i in 0 until completedJson.length()) { completedSet.add(completedJson.getString(i)) }
+                    setCompletedExercisesTodayList(completedSet)
+                }
+
                 RestoreResult.Restored
             }
             SupabaseClient.ProfileResult.NotFound -> RestoreResult.NoProfile

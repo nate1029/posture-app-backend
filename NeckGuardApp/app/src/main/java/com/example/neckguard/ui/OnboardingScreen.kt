@@ -103,7 +103,26 @@ fun OnboardingScreen(
                     selected = neckHealth,
                     onSelect = { neckHealth = it }
                 )
-                5 -> QuestionIntervalSelection(checkIntervalMs) { checkIntervalMs = it }
+                5 -> Column {
+                    QuestionIntervalSelection(checkIntervalMs) { checkIntervalMs = it }
+                    Spacer(modifier = Modifier.height(32.dp))
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(modifier = Modifier.padding(16.dp)) {
+                            Text("ℹ️", modifier = Modifier.padding(end = 12.dp))
+                            Column {
+                                Text("Wellness Disclaimer", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    "NudgeUp is a wellness tool, not a medical device. It does not diagnose, treat, cure, or prevent any disease. Consult a healthcare professional for medical advice.",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -144,7 +163,8 @@ fun OnboardingScreen(
                             coroutineScope.launch {
                                 // Try Supabase first
                                 val success = com.example.neckguard.SupabaseClient.saveProfile(
-                                    name, ageGroup, notificationVibe, usageContext, neckHealth, checkIntervalMs
+                                    name, ageGroup, notificationVibe, usageContext, neckHealth, checkIntervalMs,
+                                    0, 0, emptyList(), emptySet()
                                 )
                                 syncingProfile = false
 

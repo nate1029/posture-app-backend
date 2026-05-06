@@ -1,7 +1,6 @@
 package com.example.neckguard
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -20,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
@@ -43,6 +43,7 @@ import androidx.compose.animation.with
 import androidx.core.content.ContextCompat
 import com.example.neckguard.service.NeckGuardService
 import com.example.neckguard.ui.theme.NeckGuardTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private lateinit var repository: com.example.neckguard.data.UserRepository
@@ -61,6 +62,9 @@ class MainActivity : ComponentActivity() {
         val dao = com.example.neckguard.data.local.NeckGuardDatabase.getDatabase(this).postureLogDao()
         viewModel = androidx.lifecycle.ViewModelProvider(this, com.example.neckguard.ui.MainViewModelFactory(repository, dao))[com.example.neckguard.ui.MainViewModel::class.java]
         
+        // Handle magic link if the app was opened via an email sign-in link
+        handleMagicLinkIntent(intent)
+
         setContent {
             val appState by viewModel.appState.collectAsState()
 
@@ -81,6 +85,11 @@ class MainActivity : ComponentActivity() {
                                 viewModel.checkStatus()
                             }
                         }
+                        is com.example.neckguard.ui.AppState.NeedsAppIntro -> {
+                            com.example.neckguard.ui.AppIntroScreen {
+                                viewModel.finishAppIntro()
+                            }
+                        }
                         is com.example.neckguard.ui.AppState.NeedsOnboarding -> {
                             com.example.neckguard.ui.OnboardingScreen(
                                 prefs = SecurePrefs.get(this),
@@ -98,8 +107,51 @@ class MainActivity : ComponentActivity() {
                                 onLogout = { viewModel.logout(this@MainActivity) }
                             )
                         }
+                        is com.example.neckguard.ui.AppState.Error -> {
+                            androidx.compose.foundation.layout.Box(
+                                modifier = androidx.compose.ui.Modifier.fillMaxSize(),
+                                contentAlignment = androidx.compose.ui.Alignment.Center
+                            ) {
+                                androidx.compose.foundation.layout.Column(
+                                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+                                ) {
+                                    androidx.compose.material3.Text(
+                                        text = (appState as com.example.neckguard.ui.AppState.Error).message,
+                                        color = androidx.compose.ui.graphics.Color.Red,
+                                        modifier = androidx.compose.ui.Modifier.padding(16.dp)
+                                    )
+                                    androidx.compose.material3.Button(onClick = { viewModel.logout(this@MainActivity) }) {
+                                        androidx.compose.material3.Text("Log Out")
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleMagicLinkIntent(intent)
+    }
+
+    /**
+     * Checks if the incoming intent contains a Firebase Magic Link and,
+     * if so, completes the passwordless sign-in flow.
+     */
+    private fun handleMagicLinkIntent(intent: Intent?) {
+        val link = intent?.data?.toString() ?: return
+        if (!com.google.firebase.auth.FirebaseAuth.getInstance().isSignInWithEmailLink(link)) return
+
+        kotlinx.coroutines.MainScope().launch {
+            val error = com.example.neckguard.FirebaseAuthManager.handleEmailLink(this@MainActivity, link)
+            if (error == null) {
+                viewModel.checkStatus()
+            } else {
+                android.util.Log.e("MainActivity", "Magic link sign-in error: $error")
+                // The user will still see the auth screen; the error is logged.
             }
         }
     }
@@ -152,7 +204,6 @@ fun ProfileFetchFailedScreen(onRetry: () -> Unit, onLogout: () -> Unit) {
     }
 }
 
-@SuppressLint("BatteryLife")
 @OptIn(androidx.compose.animation.ExperimentalAnimationApi::class)
 @Composable
 fun AppScreen(viewModel: MainViewModel) {
@@ -171,8 +222,6 @@ fun AppScreen(viewModel: MainViewModel) {
         } else true)
     }
 
-    val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
-    var isIgnoringBatteryOptimizations by remember { mutableStateOf(pm.isIgnoringBatteryOptimizations(context.packageName)) }
 
     val dashState by viewModel.dashboardState.collectAsState()
     var currentTab by remember { mutableStateOf("Home") }
@@ -181,6 +230,7 @@ fun AppScreen(viewModel: MainViewModel) {
     var telemetryEnabled by remember {
         mutableStateOf(com.example.neckguard.TelemetryConsent.isEnabled(prefs))
     }
+    var showPrivacyPolicy by remember { mutableStateOf(false) }
 
     val multiplePermissionsLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
@@ -217,11 +267,11 @@ fun AppScreen(viewModel: MainViewModel) {
     }
 
     Box(modifier = Modifier.fillMaxSize().background(FinalCream)) {
-        androidx.compose.animation.AnimatedContent(
+        androidx.compose.animation.Crossfade(
             targetState = currentTab,
-            transitionSpec = { fadeIn() with fadeOut() },
             modifier = Modifier.fillMaxSize(),
-            label = "tab_transition"
+            label = "tab_transition",
+            animationSpec = androidx.compose.animation.core.tween(300)
         ) { tab ->
             when (tab) {
                 "Exercises" -> {
@@ -230,6 +280,8 @@ fun AppScreen(viewModel: MainViewModel) {
                     }
                 }
                 "Settings" -> {
+                    val isDeletingAccount by viewModel.isDeletingAccount.collectAsState()
+                    val deleteError by viewModel.deleteAccountError.collectAsState()
                     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                         Spacer(modifier = Modifier.height(48.dp))
                         Column(modifier = Modifier.padding(horizontal = 20.dp)) {
@@ -242,21 +294,14 @@ fun AppScreen(viewModel: MainViewModel) {
                                 Text("Back to Dashboard", style = MaterialTheme.typography.bodyLarge, color = FinalMuted)
                             }
                             Spacer(modifier = Modifier.height(16.dp))
-                                                        SettingsComponent(
+                            SettingsComponent(
                                 selectedInterval = selectedInterval,
-                                onIntervalChange = { ms -> selectedInterval = ms; prefs.edit().putLong("IntervalPreferenceMs", ms).apply() },
+                                onIntervalChange = { ms -> selectedInterval = ms; prefs.edit().putLong("IntervalPreferenceMs", ms).apply(); viewModel.updateNextNudge() },
                                 hasCameraPerm = hasCameraPerm,
                                 hasNotifPerm = hasNotifPerm,
                                 hasActivityPerm = hasActivityPerm,
-                                isIgnoringBattery = isIgnoringBatteryOptimizations,
                                 onFixPerm = { perm -> multiplePermissionsLauncher.launch(arrayOf(perm)) },
-                                onFixBattery = { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply { data = android.net.Uri.parse("package:${context.packageName}") }) },
                                 onLogout = {
-                                    // Mark as manually paused BEFORE stopping. Otherwise the
-                                    // service's onDestroy → scheduleRestart relay (or any
-                                    // other respawner) could resurrect the ghost service
-                                    // before BootReceiver / ServiceRestartReceiver get to
-                                    // re-check the auth flag. (B-19)
                                     prefs.edit().putBoolean("isManuallyPaused", true).apply()
                                     val serviceIntent = android.content.Intent(context, com.example.neckguard.service.NeckGuardService::class.java)
                                     context.stopService(serviceIntent)
@@ -269,18 +314,24 @@ fun AppScreen(viewModel: MainViewModel) {
                                     com.example.neckguard.TelemetryConsent.setEnabled(context, prefs, enabled)
                                 },
                                 onOpenNotificationSettings = {
-                                    val intent = android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                                        .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
-                                    try {
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                        val intent = android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                        intent.putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
                                         context.startActivity(intent)
-                                    } catch (_: android.content.ActivityNotFoundException) {
-                                        // Fallback for OEMs that don't expose the standard action.
-                                        context.startActivity(
-                                            android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                                                .setData(android.net.Uri.parse("package:${context.packageName}"))
-                                        )
+                                    } else {
+                                        val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                        intent.data = android.net.Uri.parse("package:${context.packageName}")
+                                        context.startActivity(intent)
                                     }
-                                }
+                                },
+                                onShowPrivacyPolicy = {
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://nudgeupteam.github.io/Privacy/privacy_policy.html"))
+                                    context.startActivity(intent)
+                                },
+                                onDeleteAccount = { viewModel.deleteAccount(context) },
+                                isDeletingAccount = isDeletingAccount,
+                                deleteAccountError = deleteError,
+                                onClearDeleteError = { viewModel.clearDeleteError() }
                             )
                         }
                         Spacer(modifier = Modifier.height(100.dp))
@@ -319,19 +370,35 @@ fun AppScreen(viewModel: MainViewModel) {
             }
         }
 
-        androidx.compose.animation.AnimatedVisibility(
-            visible = currentTab != "Settings",
-            modifier = Modifier.align(Alignment.BottomCenter),
-            enter = androidx.compose.animation.slideInVertically(initialOffsetY = { it }) + androidx.compose.animation.fadeIn(),
-            exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it }) + androidx.compose.animation.fadeOut()
+        val isBottomBarVisible = currentTab != "Settings"
+        val bottomBarOffsetY by androidx.compose.animation.core.animateFloatAsState(
+            targetValue = if (isBottomBarVisible) 0f else 150f,
+            animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+        )
+        val bottomBarAlpha by androidx.compose.animation.core.animateFloatAsState(
+            targetValue = if (isBottomBarVisible) 1f else 0f,
+            animationSpec = androidx.compose.animation.core.tween(200)
+        )
+
+        val density = androidx.compose.ui.platform.LocalDensity.current.density
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .graphicsLayer {
+                    translationY = bottomBarOffsetY * density
+                    alpha = bottomBarAlpha
+                }
         ) {
-            BottomNavBar(
-                currentTab = currentTab,
-                onTabChange = { currentTab = it }
-            )
+            if (bottomBarAlpha > 0f) {
+                BottomNavBar(
+                    currentTab = currentTab,
+                    onTabChange = { currentTab = it }
+                )
+            }
         }
     }
 }
+
 
 @Composable
 fun BottomNavBar(currentTab: String, onTabChange: (String) -> Unit, modifier: Modifier = Modifier) {
@@ -405,9 +472,6 @@ fun HomeTab(
             HomeNudgeCmp(dashState)
             HomeSectionDivider("TODAY'S EXERCISES")
             HomeExercisesCmp(dashState, exercisesState, onNavigateToExercises)
-            HomeSectionDivider("RECOMMENDED FOR YOU")
-            HomeDetectBannerCmp(dashState)
-            HomeRecCardsCmp(onNavigateToExercises)
         }
     }
 }
@@ -522,22 +586,7 @@ fun HomeExercisesCmp(dashState: com.example.neckguard.ui.DashboardState, exercis
     }
 }
 
-@Composable
-fun HomeDetectBannerCmp(dashState: com.example.neckguard.ui.DashboardState) {
-    Row(modifier = Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Brush.linearGradient(colors = listOf(FinalBark, FinalBarkSoft)), shape = RoundedCornerShape(14.dp)).padding(16.dp)) {
-        Text("👁️", fontSize = 26.sp); Spacer(modifier = Modifier.width(12.dp)); Column { Text("DETECTED TODAY", fontSize = 9.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalWhite.copy(alpha=0.45f), letterSpacing = 0.1.sp); Spacer(modifier = Modifier.height(4.dp)); Text(dashState.detectedToday.title, fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalWhite, lineHeight = 19.sp); Spacer(modifier = Modifier.height(3.dp)); Text(dashState.detectedToday.subtitle, fontSize = 11.sp, color = FinalWhite.copy(alpha=0.5f), lineHeight = 15.sp); Spacer(modifier = Modifier.height(8.dp)); Box(modifier = Modifier.border(1.dp, FinalWhite.copy(alpha=0.2f), RoundedCornerShape(20.dp)).background(FinalWhite.copy(alpha=0.12f), RoundedCornerShape(20.dp)).padding(horizontal = 10.dp, vertical = 4.dp)) { Text(dashState.detectedToday.severityTag, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalWhite.copy(alpha=0.7f)) } }
-    }
-}
 
-@Composable
-fun HomeRecCardsCmp(onNavigateToExercises: (String?) -> Unit) {
-    listOf(Triple("20-20-20 Rule", "Eye Relief", "Every 20 min"), Triple("Blinking Exercise", "Eye Relief", "10 reps/break")).forEachIndexed { i, rec ->
-        Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(FinalWhite).border(1.dp, FinalMist, RoundedCornerShape(14.dp)).clickable { onNavigateToExercises(rec.first) }.padding(bottom = 10.dp)) {
-            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Box(modifier = Modifier.size(38.dp).background(FinalSagePale, RoundedCornerShape(11.dp)), contentAlignment = Alignment.Center) { Text("${i+1}", fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalMoss) }; Spacer(modifier = Modifier.width(12.dp)); Column(modifier = Modifier.weight(1f)) { Text(rec.first, fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalBark); Spacer(modifier = Modifier.height(3.dp)); Row(verticalAlignment = Alignment.CenterVertically) { Box(modifier = Modifier.background(FinalSagePale, RoundedCornerShape(20.dp)).padding(horizontal=8.dp, vertical=2.dp)) { Text(rec.second, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalMoss) }; Spacer(modifier = Modifier.width(8.dp)); Text(rec.third, fontSize = 10.sp, color = FinalMuted) } }; Text("→", fontSize = 13.sp, color = FinalMuted) }
-            Row(modifier = Modifier.fillMaxWidth().background(FinalSagePale, RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp)).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { Text("💡", fontSize = 12.sp); Spacer(modifier = Modifier.width(6.dp)); Text(if (i==0) "Closest match for sustained near-vision screen use detected today." else "Reduces dry eye caused by reduced blink rate.", fontSize = 10.sp, color = FinalMoss, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, lineHeight = 14.sp) }
-        }
-    }
-}
 
 @Composable
 fun RewardsTab(viewModel: MainViewModel, onSettingsClick: () -> Unit) {
@@ -602,10 +651,15 @@ fun RewardsTab(viewModel: MainViewModel, onSettingsClick: () -> Unit) {
 @Composable
 fun SettingsComponent(
     selectedInterval: Long, onIntervalChange: (Long) -> Unit,
-    hasCameraPerm: Boolean, hasNotifPerm: Boolean, hasActivityPerm: Boolean, isIgnoringBattery: Boolean,
-    onFixPerm: (String) -> Unit, onFixBattery: () -> Unit, onLogout: () -> Unit,
+    hasCameraPerm: Boolean, hasNotifPerm: Boolean, hasActivityPerm: Boolean,
+    onFixPerm: (String) -> Unit, onLogout: () -> Unit,
     telemetryEnabled: Boolean, onTelemetryChange: (Boolean) -> Unit,
-    onOpenNotificationSettings: () -> Unit
+    onOpenNotificationSettings: () -> Unit,
+    onShowPrivacyPolicy: () -> Unit = {},
+    onDeleteAccount: () -> Unit = {},
+    isDeletingAccount: Boolean = false,
+    deleteAccountError: String? = null,
+    onClearDeleteError: () -> Unit = {}
 ) {
     Column {
         androidx.compose.material3.Text("App Settings", fontSize = 24.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalBark)
@@ -652,9 +706,80 @@ fun SettingsComponent(
             Spacer(modifier = Modifier.height(12.dp))
             val options = listOf(15_000L to "15 Seconds (Testing)", 15 * 60 * 1000L to "15 Minutes", 30 * 60 * 1000L to "30 Minutes")
             options.forEach { (ms, label) ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable { onIntervalChange(ms) }
+                ) {
                     androidx.compose.material3.RadioButton(selected = (selectedInterval == ms), onClick = { onIntervalChange(ms) }, colors = androidx.compose.material3.RadioButtonDefaults.colors(selectedColor = FinalMoss))
                     androidx.compose.material3.Text(label, fontSize = 14.sp, color = FinalBark)
+                }
+            }
+
+            var customMinutesText by remember { mutableStateOf("") }
+            val isCustomSelected = options.none { it.first == selectedInterval }
+            
+            var isCustomExpanded by remember { mutableStateOf(false) }
+            
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().clickable { 
+                    isCustomExpanded = true
+                    if (customMinutesText.isNotEmpty()) {
+                        customMinutesText.toLongOrNull()?.let { onIntervalChange(it * 60 * 1000L) }
+                    }
+                }
+            ) {
+                androidx.compose.material3.RadioButton(
+                    selected = isCustomSelected,
+                    onClick = { /* Handled by Row */ },
+                    colors = androidx.compose.material3.RadioButtonDefaults.colors(selectedColor = FinalMoss)
+                )
+                androidx.compose.material3.Text("Custom", fontSize = 14.sp, color = FinalBark)
+            }
+            
+            if (isCustomSelected || isCustomExpanded) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically, 
+                    modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 8.dp)
+                ) {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = customMinutesText,
+                        onValueChange = { customMinutesText = it },
+                        modifier = Modifier.width(120.dp).height(56.dp),
+                        label = { androidx.compose.material3.Text("Minutes") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                        singleLine = true,
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = FinalMoss,
+                            focusedLabelColor = FinalMoss,
+                            cursorColor = FinalMoss
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    androidx.compose.material3.Button(
+                        onClick = {
+                            val mins = customMinutesText.toLongOrNull()
+                            if (mins != null && mins > 0) {
+                                onIntervalChange(mins * 60 * 1000L)
+                            }
+                        },
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = FinalMoss),
+                        modifier = Modifier.height(56.dp)
+                    ) {
+                        androidx.compose.material3.Text("Apply")
+                    }
+                }
+                
+                if (selectedInterval > 0 && options.none { it.first == selectedInterval }) {
+                    val currentMins = selectedInterval / (60 * 1000L)
+                    val currentSecs = selectedInterval / 1000L
+                    val textLabel = if (currentMins > 0) "$currentMins minutes" else "$currentSecs seconds"
+                    androidx.compose.material3.Text(
+                        "Currently set to $textLabel",
+                        fontSize = 12.sp,
+                        color = FinalMoss,
+                        modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp)
+                    )
                 }
             }
         }
@@ -686,8 +811,7 @@ fun SettingsComponent(
             }
             if (!hasCameraPerm) { Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { androidx.compose.material3.Text("Camera Sensor", color = FinalBark); androidx.compose.material3.Button(onClick = { onFixPerm(android.Manifest.permission.CAMERA) }, colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = FinalMoss)) { androidx.compose.material3.Text("Fix") } }; Spacer(modifier = Modifier.height(8.dp)) }
             if (!hasActivityPerm) { Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { androidx.compose.material3.Text("Activity Sensor", color = FinalBark); androidx.compose.material3.Button(onClick = { if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) onFixPerm(android.Manifest.permission.ACTIVITY_RECOGNITION) }, colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = FinalMoss)) { androidx.compose.material3.Text("Fix") } }; Spacer(modifier = Modifier.height(8.dp)) }
-            if (!isIgnoringBattery) { Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { androidx.compose.material3.Text("Background Power", color = FinalBark); androidx.compose.material3.Button(onClick = { onFixBattery() }, colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = FinalMoss)) { androidx.compose.material3.Text("Fix") } } }
-            if (hasCameraPerm && hasNotifPerm && hasActivityPerm && isIgnoringBattery) { androidx.compose.material3.Text("All systems nominal. Ready to protect your neck!", fontSize = 12.sp, color = FinalMoss) }
+            if (hasCameraPerm && hasNotifPerm && hasActivityPerm) { androidx.compose.material3.Text("All systems nominal. Ready to protect your neck!", fontSize = 12.sp, color = FinalMoss) }
         }
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -724,13 +848,156 @@ fun SettingsComponent(
         }
         Spacer(modifier = Modifier.height(16.dp))
 
+        // ─── Health / Medical Disclaimer (B-04, M-01) ──────────────────
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(FinalSagePale.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                .border(1.dp, FinalSageLight, RoundedCornerShape(14.dp))
+                .padding(16.dp)
+        ) {
+            Row(verticalAlignment = Alignment.Top) {
+                androidx.compose.material3.Text("ℹ️", fontSize = 16.sp)
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    androidx.compose.material3.Text(
+                        "Wellness Disclaimer",
+                        fontSize = 14.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                        color = FinalMoss
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    androidx.compose.material3.Text(
+                        "NudgeUp is a wellness tool, not a medical device. It does not diagnose, treat, cure, or prevent any disease. Consult a healthcare professional for medical advice.",
+                        fontSize = 11.sp,
+                        color = FinalBarkSoft,
+                        lineHeight = 16.sp
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Column(modifier = Modifier.fillMaxWidth().background(FinalWhite, RoundedCornerShape(14.dp)).border(1.dp, FinalMist, RoundedCornerShape(14.dp)).padding(16.dp)) {
+            androidx.compose.material3.Text("Legal", fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalBark)
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onShowPrivacyPolicy() }
+                    .padding(vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                androidx.compose.material3.Text("Privacy Policy", fontSize = 14.sp, color = FinalBark)
+                androidx.compose.material3.Text("→", fontSize = 14.sp, color = FinalMuted)
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // ─── Account Section (with Deletion — B-01) ──────────────────
+        var showDeleteConfirmation by remember { mutableStateOf(false) }
+
         Column(modifier = Modifier.fillMaxWidth().background(FinalCoral.copy(alpha=0.1f), RoundedCornerShape(14.dp)).border(1.dp, FinalCoral.copy(alpha=0.3f), RoundedCornerShape(14.dp)).padding(16.dp)) {
             androidx.compose.material3.Text("Account", fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalCoral)
-            androidx.compose.material3.Text("Sign out of the application and reset local preferences.", fontSize = 12.sp, color = FinalBark)
             Spacer(modifier = Modifier.height(12.dp))
-            androidx.compose.material3.Button(onClick = onLogout, colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = FinalCoral)) {
+
+            androidx.compose.material3.Button(onClick = onLogout, modifier = Modifier.fillMaxWidth(), colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = FinalBark)) {
                 androidx.compose.material3.Text("Log Out", color = FinalWhite)
             }
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (deleteAccountError != null) {
+                androidx.compose.material3.Text(
+                    deleteAccountError,
+                    fontSize = 12.sp,
+                    color = FinalCoral,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+
+            if (isDeletingAccount) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = FinalCoral, strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    androidx.compose.material3.Text("Deleting account...", fontSize = 13.sp, color = FinalCoral)
+                }
+            } else {
+                androidx.compose.material3.OutlinedButton(
+                    onClick = { showDeleteConfirmation = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, FinalCoral),
+                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = FinalCoral)
+                ) {
+                    androidx.compose.material3.Text("Delete Account", color = FinalCoral)
+                }
+            }
+        }
+
+        // Delete Account Confirmation Dialog
+        if (showDeleteConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showDeleteConfirmation = false },
+                title = {
+                    Text(
+                        "Delete your account?",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = FinalCoral
+                    )
+                },
+                text = {
+                    Column {
+                        Text(
+                            "This will permanently delete:",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                            color = FinalBark
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        listOf(
+                            "Your profile and preferences",
+                            "All posture history and session logs",
+                            "Exercise progress and points",
+                            "Crash reports linked to your account"
+                        ).forEach { item ->
+                            Text(
+                                "  •  $item",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = FinalBarkSoft,
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            "This action cannot be undone.",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            color = FinalCoral
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showDeleteConfirmation = false
+                            onClearDeleteError()
+                            onDeleteAccount()
+                        }
+                    ) {
+                        Text("Delete Everything", color = FinalCoral, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteConfirmation = false }) {
+                        Text("Cancel", color = FinalMoss)
+                    }
+                }
+            )
         }
     }
 }

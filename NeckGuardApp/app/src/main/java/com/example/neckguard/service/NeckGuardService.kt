@@ -19,11 +19,11 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import android.util.Log
+import com.example.neckguard.R
 import android.view.Display
 import android.view.Surface
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import com.example.neckguard.R
 import com.example.neckguard.engine.PostureEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -195,6 +195,7 @@ class NeckGuardService : Service(), SensorEventListener {
         val userRepo = com.example.neckguard.data.UserRepository(prefs)
         if (!userRepo.hydrateSession() || !userRepo.hasCompletedOnboarding()) {
             Log.w(TAG, "Auth invalid or onboarding incomplete. Killing ghost service.")
+            isIntentionallyStopped = true
             stopSelf()
             return START_NOT_STICKY
         }
@@ -395,7 +396,7 @@ class NeckGuardService : Service(), SensorEventListener {
         )
 
         val builder = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Quick check-in \uD83D\uDC4B")
             .setContentText("You've been on your phone for a while. Tap to check your posture.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -557,7 +558,7 @@ class NeckGuardService : Service(), SensorEventListener {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("NudgeUp Active")
             .setContentText("Monitoring posture silently")
-            .setSmallIcon(android.R.drawable.ic_menu_compass)
+            .setSmallIcon(R.drawable.ic_notification)
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setOngoing(true)
             .setContentIntent(openAppPendingIntent)

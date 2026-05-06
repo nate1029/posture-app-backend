@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import androidx.lifecycle.asFlow
 import com.example.neckguard.RemoteConfigManager
@@ -24,8 +25,10 @@ import com.google.firebase.crashlytics.FirebaseCrashlytics
 sealed class AppState {
     object Loading : AppState()
     object Unauthenticated : AppState()
+    object NeedsAppIntro : AppState()
     object NeedsOnboarding : AppState()
     object Ready : AppState()
+    data class Error(val message: String) : AppState()
 
     /**
      * Authenticated successfully, but the post-login `fetchProfile` call
@@ -89,6 +92,12 @@ class MainViewModel(
 
     init {
         checkStatus()
+        
+        // As requested: randomize the 3 exercises every time the app opens
+        val newRandom = com.example.neckguard.ui.ExerciseData.exercises.shuffled().take(3).map { it.title }
+        repository.setAssignedExercisesList(newRandom)
+        repository.setCompletedExercisesTodayList(emptySet())
+        
         startGamificationAndPostureEngine()
     }
 
@@ -118,10 +127,34 @@ class MainViewModel(
 
         launch {
             while (isActive) {
+                val intervalMs = repository.prefs.getLong("IntervalPreferenceMs", 30 * 60 * 1000L)
+                val usageMs = repository.prefs.getLong("CumulativeUsageMs", 0L)
+                val remainingMins = kotlin.math.max(0, ((intervalMs - usageMs) / 60000).toInt())
+                
+                dashboardState.value = dashboardState.value.copy(
+                    nextNudgeMins = remainingMins
+                )
+
                 delay(60_000L)
                 if (runDayRolloverIfNeeded()) {
                     refreshLocalGamificationState()
                     todayBoundary.value = dayBoundsMillis(0).first
+                }
+                
+                // Sync posture logs periodically
+                try {
+                    val unsynced = postureLogDao.getUnsyncedLogs()
+                    if (unsynced.isNotEmpty()) {
+                        // Chunk by 100 to avoid SQLite IN limit (999) and reduce payload size
+                        unsynced.chunked(100).forEach { chunk ->
+                            val ok = com.example.neckguard.SupabaseClient.uploadPostureLogs(chunk)
+                            if (ok) {
+                                postureLogDao.markAsSynced(chunk.map { it.timestampStartMs })
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("MainViewModel", "Periodic log sync failed", e)
                 }
             }
         }
@@ -171,10 +204,25 @@ class MainViewModel(
         val (yStart, yEnd) = dayBoundsMillis(-1)
         val yesterdayTotal = postureLogDao.getCumulativeUsageBetween(yStart, yEnd) ?: 0L
         val yesterdaySlouched = postureLogDao.getCumulativeSlouchedBetween(yStart, yEnd) ?: 0L
-        val yesterdayScore = if (yesterdayTotal > 0) {
-            (((yesterdayTotal - yesterdaySlouched).toDouble() / yesterdayTotal) * 100)
-                .toInt()
-                .coerceIn(0, 100)
+        val manualTotal = repository.manualChecksTotalToday
+        val manualBad = repository.manualChecksBadToday
+
+        var timeRatio = if (yesterdayTotal > 0) (yesterdayTotal - yesterdaySlouched).toDouble() / yesterdayTotal else -1.0
+        var manualRatio = if (manualTotal > 0) (manualTotal - manualBad).toDouble() / manualTotal else -1.0
+
+        val finalRatio = if (timeRatio >= 0 && manualRatio >= 0) {
+            (timeRatio * 0.7) + (manualRatio * 0.3)
+        } else if (timeRatio >= 0) {
+            timeRatio
+        } else if (manualRatio >= 0) {
+            manualRatio
+        } else {
+            -1.0
+        }
+
+        val yesterdayScore = if (finalRatio >= 0) {
+            val curvedScore = (57.0 * finalRatio * finalRatio) + (33.0 * finalRatio) + 10.0
+            curvedScore.toInt().coerceIn(0, 100)
         } else {
             UserRepository.NO_YESTERDAY_DATA
         }
@@ -184,6 +232,8 @@ class MainViewModel(
         val assigned = ExerciseData.exercises.shuffled().take(3).map { it.title }
         repository.setAssignedExercisesList(assigned)
         repository.setCompletedExercisesTodayList(emptySet())
+        repository.setManualChecksTotalToday(0)
+        repository.setManualChecksBadToday(0)
         return true
     }
 
@@ -212,9 +262,25 @@ class MainViewModel(
     }
 
     private fun handleTodayStatsTick(totalMs: Long, slouchedMs: Long) {
-        val healthyMs = totalMs - slouchedMs
-        val newScore = if (totalMs > 0) {
-            ((healthyMs.toDouble() / totalMs) * 100).toInt().coerceIn(0, 100)
+        val manualTotal = repository.manualChecksTotalToday
+        val manualBad = repository.manualChecksBadToday
+
+        var timeRatio = if (totalMs > 0) (totalMs - slouchedMs).toDouble() / totalMs else -1.0
+        var manualRatio = if (manualTotal > 0) (manualTotal - manualBad).toDouble() / manualTotal else -1.0
+
+        val finalRatio = if (timeRatio >= 0 && manualRatio >= 0) {
+            (timeRatio * 0.7) + (manualRatio * 0.3)
+        } else if (timeRatio >= 0) {
+            timeRatio
+        } else if (manualRatio >= 0) {
+            manualRatio
+        } else {
+            -1.0
+        }
+
+        val newScore = if (finalRatio >= 0) {
+            val curvedScore = (57.0 * finalRatio * finalRatio) + (33.0 * finalRatio) + 10.0
+            curvedScore.toInt().coerceIn(0, 100)
         } else {
             0
         }
@@ -231,25 +297,14 @@ class MainViewModel(
             0
         }
 
-        // Dynamic Recommendations — pulled from Firebase Remote Config. The
-        // "your score yesterday was X" copy only fires when we actually
-        // have a yesterday score; otherwise we fall through to the moderate
-        // variant (no specific number to call out).
+        val dayOfYear = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
+        val parameters = listOf("forward_head", "screen_distance", "lateral_tilt", "phone_angle", "break_frequency")
+        val pseudoWorstParameter = parameters[dayOfYear % parameters.size]
+        
         val rc = RemoteConfigManager
         val haveYesterday = ys != UserRepository.NO_YESTERDAY_DATA
-        val nudge = if (haveYesterday && ys < 70) {
-            NudgeData(
-                rc.nudgeCriticalInstruction,
-                rc.nudgeCriticalTags,
-                "Your posture score yesterday was $ys. ${rc.nudgeCriticalReasoning}"
-            )
-        } else {
-            NudgeData(
-                rc.nudgeModerateInstruction,
-                rc.nudgeModerateTags,
-                rc.nudgeModerateReasoning
-            )
-        }
+        
+        val nudge = com.example.neckguard.data.NudgeCatalog.getDailyNudge(newScore, pseudoWorstParameter, dayOfYear)
 
         val detect = if (haveYesterday && ys < 70) {
             DetectionData(
@@ -362,7 +417,8 @@ class MainViewModel(
             val next = withContext(Dispatchers.IO) {
                 if (!repository.hydrateSession()) {
                     // Firebase says not logged in
-                    return@withContext AppState.Unauthenticated
+                    val introSeen = repository.prefs.getBoolean("AppIntroSeen", false)
+                    return@withContext if (introSeen) AppState.Unauthenticated else AppState.NeedsAppIntro
                 }
 
                 // Firebase says logged in. Ensure Supabase bridge session
@@ -370,26 +426,48 @@ class MainViewModel(
                 // uploads, etc.). If SupabaseClient already has tokens
                 // (hydrated from prefs above), skip the bridge.
                 if (com.example.neckguard.SupabaseClient.accessToken.isNullOrEmpty()) {
-                    val bridgeOk = try {
+                    val bridgeError = try {
                         com.example.neckguard.FirebaseAuthManager.bridgeToSupabase()
                     } catch (t: Throwable) {
-                        android.util.Log.e("MainViewModel", "Bridge exception: ${t.message}", t)
-                        false
+                        android.util.Log.e("MainViewModel", "Bridge exception", t)
+                        t.message ?: "Unknown bridge exception"
                     }
-                    android.util.Log.d("MainViewModel",
-                        "Bridge result=$bridgeOk, " +
-                        "supabaseToken=${com.example.neckguard.SupabaseClient.accessToken?.take(10)}..., " +
-                        "supabaseUid=${com.example.neckguard.SupabaseClient.userId}"
-                    )
+                    if (bridgeError != null) {
+                        return@withContext AppState.Error("Supabase Bridge Failed: $bridgeError")
+                    }
                 }
 
                 if (repository.hasCompletedOnboarding()) {
                     AppState.Ready
                 } else {
-                    when (repository.restoreProfileFromSupabase()) {
-                        UserRepository.RestoreResult.Restored -> AppState.Ready
-                        UserRepository.RestoreResult.NoProfile -> AppState.NeedsOnboarding
-                        UserRepository.RestoreResult.TransientError -> AppState.ProfileFetchFailed
+                    // If we have no Supabase session (bridge failed or never
+                    // ran), there's no point attempting a profile fetch that
+                    // will certainly fail. Route straight to onboarding so
+                    // the user isn't stuck on the "couldn't reach server" screen.
+                    if (com.example.neckguard.SupabaseClient.accessToken.isNullOrEmpty()) {
+                        AppState.NeedsOnboarding
+                    } else {
+                        try {
+                            when (repository.restoreProfileFromSupabase()) {
+                                UserRepository.RestoreResult.Restored -> {
+                                    try {
+                                        val logs = com.example.neckguard.SupabaseClient.fetchPostureLogs()
+                                        if (logs.isNotEmpty()) {
+                                            postureLogDao.insertLogs(logs)
+                                        }
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("MainViewModel", "Failed to fetch logs during restore", e)
+                                    }
+                                    refreshLocalGamificationState()
+                                    AppState.Ready
+                                }
+                                UserRepository.RestoreResult.NoProfile -> AppState.NeedsOnboarding
+                                UserRepository.RestoreResult.TransientError -> AppState.ProfileFetchFailed
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("MainViewModel", "Crash in profile restore", e)
+                            AppState.ProfileFetchFailed
+                        }
                     }
                 }
             }
@@ -416,18 +494,143 @@ class MainViewModel(
         }
     }
 
+    fun finishAppIntro() {
+        repository.prefs.edit().putBoolean("AppIntroSeen", true).apply()
+        _appState.value = AppState.Unauthenticated
+    }
+
     fun finishOnboarding() {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { repository.completeOnboarding() }
+            withContext(Dispatchers.IO) { 
+                repository.completeOnboarding() 
+                try {
+                    val logs = com.example.neckguard.SupabaseClient.fetchPostureLogs()
+                    if (logs.isNotEmpty()) {
+                        postureLogDao.insertLogs(logs)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("MainViewModel", "Failed to fetch logs after onboarding", e)
+                }
+            }
+            refreshLocalGamificationState()
             _appState.value = AppState.Ready
         }
     }
 
     fun logout(context: android.content.Context) {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { repository.logout(context) }
+            try {
+                val intent = android.content.Intent(context, com.example.neckguard.service.NeckGuardService::class.java)
+                intent.action = "STOP_SERVICE"
+                context.startService(intent)
+            } catch (e: Exception) {
+                android.util.Log.e("MainViewModel", "Failed to stop service on logout", e)
+            }
+            withContext(Dispatchers.IO) { 
+                try { postureLogDao.deleteAllLogs() } catch (_: Throwable) {}
+                repository.logout(context) 
+            }
             _appState.value = AppState.Unauthenticated
         }
+    }
+
+    /**
+     * Permanently deletes the user's account and all associated data.
+     * Required for Google Play account deletion policy compliance.
+     *
+     * Flow: stop service → delete Supabase data → delete Firebase Auth
+     *       → clear local DB → clear prefs → navigate to Unauthenticated.
+     *
+     * If the Firebase Auth deletion fails (requires recent login), we
+     * still clear all data and sign out — the orphaned Firebase Auth
+     * entry has no associated data left.
+     */
+    private val _isDeletingAccount = MutableStateFlow(false)
+    val isDeletingAccount: kotlinx.coroutines.flow.StateFlow<Boolean> = _isDeletingAccount.asStateFlow()
+    private val _deleteAccountError = MutableStateFlow<String?>(null)
+    val deleteAccountError: kotlinx.coroutines.flow.StateFlow<String?> = _deleteAccountError.asStateFlow()
+
+    /**
+     * Immediately recalculates the "next nudge in X min" display.
+     * Called from the settings UI when the user changes the interval
+     * so they see the update without waiting for the 60s poll loop.
+     */
+    fun updateNextNudge() {
+        val intervalMs = repository.prefs.getLong("IntervalPreferenceMs", 30 * 60 * 1000L)
+        val usageMs = repository.prefs.getLong("CumulativeUsageMs", 0L)
+        val remainingMins = kotlin.math.max(0, ((intervalMs - usageMs) / 60000).toInt())
+        dashboardState.value = dashboardState.value.copy(nextNudgeMins = remainingMins)
+    }
+
+    fun deleteAccount(context: android.content.Context) {
+        viewModelScope.launch {
+            _isDeletingAccount.value = true
+            _deleteAccountError.value = null
+
+            val error = withContext(Dispatchers.IO) {
+                // 1. Stop the monitoring service cleanly
+                try {
+                    val intent = android.content.Intent(context, com.example.neckguard.service.NeckGuardService::class.java)
+                    intent.action = "STOP_SERVICE"
+                    context.startService(intent)
+                } catch (_: Throwable) {}
+
+                // 2. Guarantee a fresh Supabase session before deleting.
+                //    This fixes cases where the access token expired and the refresh
+                //    token was lost or invalid, causing deleteUserData to return false.
+                try {
+                    com.example.neckguard.FirebaseAuthManager.bridgeToSupabase()
+                } catch (e: Exception) {
+                    android.util.Log.e("MainViewModel", "bridgeToSupabase failed in deleteAccount", e)
+                }
+
+                // 3. Delete all server-side data from Supabase
+                val supabaseOk = try {
+                    com.example.neckguard.SupabaseClient.deleteUserData()
+                } catch (t: Throwable) {
+                    android.util.Log.e("MainViewModel", "Supabase delete failed", t)
+                    false
+                }
+
+                // 4. Delete Firebase Auth user
+                val firebaseOk = try {
+                    com.example.neckguard.FirebaseAuthManager.deleteCurrentUser()
+                } catch (t: Throwable) {
+                    android.util.Log.e("MainViewModel", "Firebase delete failed", t)
+                    false
+                }
+
+                // 5. Clear local Room database
+                try { postureLogDao.deleteAllLogs() } catch (_: Throwable) {}
+
+                // 6. Clear all SharedPreferences
+                try { repository.prefs.edit().clear().apply() } catch (_: Throwable) {}
+
+                // 7. Sign out of Firebase + Google + Supabase
+                try { repository.logout(context) } catch (_: Throwable) {}
+
+                if (!supabaseOk || !firebaseOk) {
+                    // We still cleared local data and logged them out so they aren't
+                    // trapped, but we should inform them server data might remain.
+                    return@withContext "Delete failed. SupabaseOk=$supabaseOk, FirebaseOk=$firebaseOk."
+                }
+                
+                null // success
+            }
+
+            _isDeletingAccount.value = false
+            if (error != null) {
+                _deleteAccountError.value = error
+            }
+            // Always navigate to login. By this point local prefs are
+            // cleared and Firebase is signed out — leaving the user on
+            // a dead dashboard is worse than showing the auth screen.
+            _appState.value = AppState.Unauthenticated
+        }
+    }
+
+    fun clearDeleteError() {
+        _deleteAccountError.value = null
     }
 
     // ───────────────────────── Helpers ─────────────────────────────────

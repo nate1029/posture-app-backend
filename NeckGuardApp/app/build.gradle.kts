@@ -96,7 +96,7 @@ dependencies {
     implementation("com.google.mlkit:face-detection:16.1.6")
 
     // Firebase (Analytics & Cloud Messaging) Growth Engine
-    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation(platform("com.google.firebase:firebase-bom:33.9.0"))
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-messaging")
     implementation("com.google.firebase:firebase-crashlytics")

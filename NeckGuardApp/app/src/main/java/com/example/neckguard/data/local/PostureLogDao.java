@@ -12,6 +12,9 @@ public interface PostureLogDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     void insertLog(PostureLog log);
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    void insertLogs(List<PostureLog> logs);
+
     @Query("SELECT * FROM posture_logs ORDER BY timestampStartMs DESC")
     LiveData<List<PostureLog>> getAllLogs();
 
@@ -37,4 +40,8 @@ public interface PostureLogDao {
 
     @Query("SELECT SUM(slouchedMs) FROM posture_logs WHERE timestampStartMs BETWEEN :startMs AND :endMs")
     Long getCumulativeSlouchedBetween(long startMs, long endMs);
+
+    /** Deletes all posture logs — used during account deletion. */
+    @Query("DELETE FROM posture_logs")
+    void deleteAllLogs();
 }

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NudgeUp — Privacy Policy</title>
+    <style>
+        :root { --moss: #4A6741; --bark: #3D2E1E; --cream: #FAF8F3; --muted: #8A8A7A; --sage: #7A9E7E; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--cream); color: var(--bark); line-height: 1.7; }
+        .container { max-width: 720px; margin: 0 auto; padding: 48px 24px; }
+        h1 { font-size: 28px; color: var(--moss); margin-bottom: 8px; }
+        .updated { font-size: 14px; color: var(--muted); margin-bottom: 32px; }
+        h2 { font-size: 18px; color: var(--moss); margin: 28px 0 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        p, li { font-size: 15px; margin-bottom: 8px; }
+        ul { padding-left: 20px; }
+        a { color: var(--sage); }
+        .footer { margin-top: 48px; padding-top: 24px; border-top: 1px solid #ddd; font-size: 13px; color: var(--muted); }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>NudgeUp Privacy Policy</h1>
+    <p class="updated">Last updated: April 2026</p>
+
+    <h2>Who We Are</h2>
+    <p>NudgeUp is a wellness application designed to help you monitor and improve your phone posture habits. This policy explains what data we collect, how we use it, and your rights.</p>
+
+    <h2>What Data We Collect</h2>
+    <ul>
+        <li><strong>Account information:</strong> Email address, display name, and age range (collected during sign-up and onboarding).</li>
+        <li><strong>Posture data:</strong> Accelerometer and gyroscope sensor readings processed locally on your device to estimate phone tilt angle. Aggregated session summaries (duration, healthy vs slouched time) are stored locally and synced to our servers.</li>
+        <li><strong>Camera data:</strong> Front camera images are processed in real-time using on-device ML Kit face detection to verify head posture. These images are <strong>NEVER</strong> saved, stored, or transmitted — they exist only in memory during the brief analysis and are immediately discarded.</li>
+        <li><strong>Preferences:</strong> Notification settings, check interval, exercise history, and gamification progress.</li>
+        <li><strong>Crash diagnostics:</strong> Anonymous crash stack traces and device model information, collected only when you have enabled diagnostics.</li>
+        <li><strong>Analytics events:</strong> Anonymized usage events (screen views, feature usage) via Firebase Analytics, collected only with your consent.</li>
+    </ul>
+
+    <h2>How We Use Your Data</h2>
+    <ul>
+        <li>To provide posture monitoring and personalized exercise recommendations.</li>
+        <li>To sync your profile and progress across devices via our secure backend.</li>
+        <li>To improve app stability through crash reporting (opt-in).</li>
+        <li>To understand aggregate usage patterns and improve features (opt-in analytics).</li>
+    </ul>
+    <p><strong>We do NOT sell, rent, or share your personal data with third parties for advertising or marketing purposes.</strong></p>
+
+    <h2>Third-Party Services</h2>
+    <ul>
+        <li><strong>Firebase (Google):</strong> Authentication, crash reporting (Crashlytics), analytics, push notifications, and remote configuration. Subject to <a href="https://policies.google.com/privacy">Google's Privacy Policy</a>.</li>
+        <li><strong>Supabase:</strong> Secure backend database for profile and session data. Data is encrypted in transit (TLS) and at rest.</li>
+        <li><strong>Google ML Kit:</strong> On-device face detection. No data is sent to Google's servers — all processing occurs locally on your device.</li>
+    </ul>
+
+    <h2>Data Security</h2>
+    <ul>
+        <li>All network communication uses HTTPS (TLS 1.2+). Cleartext traffic is disabled.</li>
+        <li>Sensitive local data (auth tokens, preferences) is encrypted using Android's EncryptedSharedPreferences backed by the hardware KeyStore.</li>
+        <li>Your posture photos never leave your device and are never written to disk.</li>
+    </ul>
+
+    <h2>Data Retention &amp; Deletion</h2>
+    <ul>
+        <li>Your data is retained as long as your account is active.</li>
+        <li>You can delete your account and all associated data at any time from <strong>Settings &gt; Account &gt; Delete Account</strong>.</li>
+        <li>Upon deletion, we remove your profile, posture logs, and crash reports from our servers. Local data is cleared from your device.</li>
+        <li>You may also email us at <a href="mailto:privacy@nudgeup.app">privacy@nudgeup.app</a> to request data deletion.</li>
+    </ul>
+
+    <h2>Children's Privacy</h2>
+    <p>NudgeUp is not directed at children under 13. We do not knowingly collect personal information from children under 13. If you believe we have collected such data, please contact us and we will delete it promptly.</p>
+
+    <h2>Your Rights</h2>
+    <p>You have the right to:</p>
+    <ul>
+        <li>Access the personal data we hold about you.</li>
+        <li>Request correction of inaccurate data.</li>
+        <li>Request deletion of your account and data.</li>
+        <li>Opt out of analytics and crash reporting at any time via Settings.</li>
+        <li>Export your data by contacting us.</li>
+    </ul>
+
+    <h2>Medical Disclaimer</h2>
+    <p>NudgeUp is a wellness tool, <strong>NOT a medical device</strong>. It does not diagnose, treat, cure, or prevent any disease or medical condition. The posture scores and exercise recommendations are for informational and wellness purposes only. Always consult a qualified healthcare professional for medical advice regarding neck pain or spinal conditions.</p>
+
+    <h2>Changes to This Policy</h2>
+    <p>We may update this policy from time to time. We will notify you of significant changes through the app. Continued use of NudgeUp after changes constitutes acceptance of the updated policy.</p>
+
+    <h2>Contact Us</h2>
+    <p>For questions about this privacy policy or your data, email us at <a href="mailto:privacy@nudgeup.app">privacy@nudgeup.app</a>.</p>
+
+    <div class="footer">
+        <p>&copy; 2026 NudgeUp. All rights reserved.</p>
+    </div>
+</div>
+</body>
+</html>

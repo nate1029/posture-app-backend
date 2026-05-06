@@ -40,27 +40,27 @@ data class Exercise(
     val description: String,
     val reps: String,
     val durationSecs: Int,
-    val lottieRawName: String?
+    val videoResId: Int?
 )
 
 object ExerciseData {
     val exercises = listOf(
         // Cervical Movements
-        Exercise("Cervical Flexion", "Cervical Movements", "Slowly bring your chin toward your chest. Return to the starting position.", "10 repetitions", 0, null),
-        Exercise("Cervical Extension", "Cervical Movements", "Slowly look upward toward the ceiling. Return to the starting position.", "10 repetitions", 0, null),
-        Exercise("Cervical Side Flexion", "Cervical Movements", "Tilt your ear toward your shoulder. Perform on both sides.", "10 reps each side", 0, null),
-        Exercise("Cervical Rotation", "Cervical Movements", "Slowly rotate your head to the left and right. Keep the movement controlled and pain-free.", "10 reps each side", 0, null),
-        Exercise("Chin Tuck", "Cervical Movements", "Pull your chin straight backward without bending your neck forward. Hold for 5 seconds.", "10 repetitions", 5, "anim_chin_tuck"),
+        Exercise("Cervical Flexion", "Cervical Movements", "Slowly bring your chin toward your chest. Return to the starting position.", "10 repetitions", 0, com.example.neckguard.R.raw.exercise_1),
+        Exercise("Cervical Extension", "Cervical Movements", "Slowly look upward toward the ceiling. Return to the starting position.", "10 repetitions", 0, com.example.neckguard.R.raw.exercise_2),
+        Exercise("Cervical Side Flexion", "Cervical Movements", "Tilt your ear toward your shoulder. Perform on both sides.", "10 reps each side", 0, com.example.neckguard.R.raw.exercise_3),
+        Exercise("Cervical Rotation", "Cervical Movements", "Slowly rotate your head to the left and right. Keep the movement controlled and pain-free.", "10 reps each side", 0, com.example.neckguard.R.raw.exercise_4),
+        Exercise("Chin Tuck", "Cervical Movements", "Pull your chin straight backward without bending your neck forward. Hold for 5 seconds.", "10 repetitions", 5, null),
 
         // Stretching Exercises
         Exercise("Upper Trapezius Stretch", "Stretching Exercises", "Tilt your head to one side, bringing your ear toward your shoulder. Use your hand to apply gentle pressure. Keep opposite shoulder relaxed.", "3 times each side", 30, null),
         Exercise("Levator Scapulae Stretch", "Stretching Exercises", "Turn your head 45 degrees to one side. Look down toward your armpit. Apply gentle pressure with your hand.", "3 times each side", 30, null),
-        Exercise("Seated Pectoral Stretch", "Stretching Exercises", "Sit or stand upright. Interlock your fingers behind your back. Gently pull your shoulders back and open your chest.", "3 repetitions", 30, null),
+        Exercise("Seated Pectoral Stretch", "Stretching Exercises", "Sit or stand upright. Interlock your fingers behind your back. Gently pull your shoulders back and open your chest.", "3 repetitions", 30, com.example.neckguard.R.raw.exercise_8),
 
         // Strengthening and Postural Exercises
-        Exercise("Scapular Retractions", "Strengthening", "Pull your shoulder blades back and down. Keep your neck relaxed.", "10 repetitions", 5, null),
-        Exercise("Shoulder Shrugs", "Strengthening", "Lift your shoulders up toward your ears. Hold briefly and then relax slowly down.", "10 repetitions", 0, null),
-        Exercise("Seated Thoracic Extension", "Strengthening", "Sit upright with your hands behind your head. Gently extend your upper back backward over the chair. Return slowly.", "10 repetitions", 0, null),
+        Exercise("Scapular Retractions", "Strengthening", "Pull your shoulder blades back and down. Keep your neck relaxed.", "10 repetitions", 5, com.example.neckguard.R.raw.exercise_9),
+        Exercise("Shoulder Shrugs", "Strengthening", "Lift your shoulders up toward your ears. Hold briefly and then relax slowly down.", "10 repetitions", 0, com.example.neckguard.R.raw.exercise_10),
+        Exercise("Seated Thoracic Extension", "Strengthening", "Sit upright with your hands behind your head. Gently extend your upper back backward over the chair. Return slowly.", "10 repetitions", 0, com.example.neckguard.R.raw.exercise_11),
         Exercise("Seated Thoracic Mobility", "Strengthening", "Sit upright with your hands on your thighs. Round your upper back forward. Then straighten your back to an upright position.", "10 repetitions", 0, null),
         Exercise("Isometric Neck Strengthening", "Strengthening", "Press your head gently into your hand in each direction (forward, backward, sides). Do not allow neck to move.", "10 reps / 5s hold", 5, null),
 
@@ -317,7 +317,7 @@ fun ExerciseDetailContent(
             .padding(bottom = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // --- 1. Top Section: The Rive Animation ---
+        // --- 1. Top Section: Video Player ---
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -326,14 +326,35 @@ fun ExerciseDetailContent(
                 .background(TealWash),
             contentAlignment = Alignment.Center
         ) {
-            androidx.compose.ui.viewinterop.AndroidView(
-                factory = { context ->
-                    app.rive.runtime.kotlin.RiveAnimationView(context).apply {
-                        setRiveResource(com.example.neckguard.R.raw.girl, autoplay = true)
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
-            )
+            if (exercise.videoResId != null) {
+                androidx.compose.ui.viewinterop.AndroidView(
+                    factory = { context ->
+                        android.widget.VideoView(context).apply {
+                            setVideoURI(android.net.Uri.parse("android.resource://${context.packageName}/${exercise.videoResId}"))
+                            setOnPreparedListener { mp ->
+                                mp.isLooping = true
+                                mp.setVolume(0f, 0f) // Mute video since instructions are on screen
+                                start()
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else if (exercise.category == "Eye Relief") {
+                Text(
+                    "Follow the instructions below",
+                    color = Teal,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp
+                )
+            } else {
+                Text(
+                    "Video coming soon",
+                    color = Teal,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(24.dp))

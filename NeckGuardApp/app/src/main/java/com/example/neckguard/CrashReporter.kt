@@ -95,10 +95,14 @@ object CrashReporter {
 
         @OptIn(DelicateCoroutinesApi::class)
         GlobalScope.launch {
-            val success = SupabaseClient.uploadCrashLog(pendingCrash)
-            if (success) {
-                prefs.edit().remove(KEY_PENDING_CRASH).apply()
-                Log.i(TAG, "Crash report flushed.")
+            try {
+                val success = SupabaseClient.uploadCrashLog(pendingCrash)
+                if (success) {
+                    prefs.edit().remove(KEY_PENDING_CRASH).apply()
+                    Log.i(TAG, "Crash report flushed.")
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "Failed to flush crash report: ${t.message}")
             }
         }
     }

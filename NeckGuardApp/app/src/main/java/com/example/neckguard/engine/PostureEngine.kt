@@ -129,5 +129,6 @@ object PostureEngine {
     
     fun resetFilter() {
         lastTimestampNS = 0L
+        currentPitch = 90f  // Match initial default (phone flat / IDLE)
     }
 }

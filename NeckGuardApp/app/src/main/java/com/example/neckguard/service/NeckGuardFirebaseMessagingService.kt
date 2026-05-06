@@ -3,6 +3,7 @@ package com.example.neckguard.service
 import android.app.NotificationManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.example.neckguard.R
 import com.example.neckguard.BuildConfig
 import com.example.neckguard.SecurePrefs
 import com.google.firebase.messaging.FirebaseMessagingService
@@ -64,7 +65,7 @@ class NeckGuardFirebaseMessagingService : FirebaseMessagingService() {
     private fun showNotification(title: String, body: String) {
         // Re-using the Alert channel so the user feels it
         val builder = NotificationCompat.Builder(this, "neckguard_alert_channel")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))

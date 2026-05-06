@@ -164,11 +164,17 @@ class CheckPostureActivity : ComponentActivity() {
                     Log.d(TAG, "WebApp Logic Match -> Phone: $phonePitch° | Face: $facePitchExtracted° | True Flexion: $trueNeckPitch°")
                 }
 
-                val message = when {
-                    trueNeckPitch > 35f -> "High Risk Mode (${String.format("%.1f", trueNeckPitch)}° flexion): You are heavily slouched. Please sit up."
-                    trueNeckPitch > 15f -> "Moderate Risk (${String.format("%.1f", trueNeckPitch)}° flexion): Your neck is slightly crouched."
-                    else -> "Posture looks great! Keep it up."
-                }
+                val prefs = SecurePrefs.get(this)
+                val vibe = prefs.getString("UserVibe", "") ?: ""
+                val message = generateNotificationMessage(vibe, trueNeckPitch)
+
+                // Track manual check
+                val total = prefs.getInt("ManualChecksTotalToday", 0) + 1
+                val bad = prefs.getInt("ManualChecksBadToday", 0) + if (trueNeckPitch > 15f) 1 else 0
+                prefs.edit()
+                    .putInt("ManualChecksTotalToday", total)
+                    .putInt("ManualChecksBadToday", bad)
+                    .apply()
 
                 fireResultNotification(message)
                 finish()
@@ -210,20 +216,48 @@ class CheckPostureActivity : ComponentActivity() {
         val style = NotificationCompat.BigTextStyle().bigText(text)
 
         val builder = NotificationCompat.Builder(this, "neckguard_alert_channel")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Posture Result")
             .setContentText(text)
             .setStyle(style)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
-            // Auto-dismiss after 90 seconds. Long enough to read, short
-            // enough that it doesn't clutter the notification shade for the
-            // next 15 minutes until the next check. Works on API 26+
-            // (99%+ of active devices); on API 24-25 this is a no-op and
-            // the notification stays until tapped — acceptable fallback.
             .setTimeoutAfter(RESULT_NOTIFICATION_TIMEOUT_MS)
 
         manager.notify(ALERT_NOTIFICATION_ID, builder.build())
+    }
+
+    private fun generateNotificationMessage(vibe: String, pitch: Float): String {
+        val type = when {
+            pitch > 35f -> "high_risk"
+            pitch > 15f -> "moderate"
+            else -> "great"
+        }
+        val pitchStr = String.format("%.1f", pitch)
+
+        val messages = when (vibe) {
+            "Chaotic — memes, gen-z humour, unhinged energy" -> when (type) {
+                "high_risk" -> listOf("Bro your neck is at $pitchStr° 💀 Are you trying to become a shrimp?", "Bestie plz sit up, $pitchStr° flexion is giving goblin energy.", "Your spine is screaming rn ($pitchStr°). Fix it before you evolve into a prawn 🦐.")
+                "moderate" -> listOf("Ayo, $pitchStr° is a bit sus. Straighten up.", "You're slipping into gremlin mode ($pitchStr°). Pull it back.", "Mild slouch detected ($pitchStr°). Let's not make it worse.")
+                else -> listOf("Posture check passed! You actually look like a human being.", "Slay! Your spine is serving absolute straightness.", "No notes, your posture is immaculate rn.")
+            }
+            "Hype mode — motivational, hustle, 'you got this'" -> when (type) {
+                "high_risk" -> listOf("High Risk ($pitchStr°)! You're better than this, straighten that back and conquer the day!", "Don't let bad posture defeat you! $pitchStr° flexion is a setback, let's bounce back!", "You are a warrior, but right now your neck ($pitchStr°) says otherwise. Head up!")
+                "moderate" -> listOf("Keep the momentum going! Fix that $pitchStr° slouch and stay sharp.", "You're slipping a bit ($pitchStr°). Reset and get back to grinding with good posture!", "Almost there! Just straighten up a bit from $pitchStr° and you're golden.")
+                else -> listOf("That's what I'm talking about! Great posture, keep crushing it!", "Posture on point! You're unstoppable right now.", "Perfect alignment! Keep that head held high.")
+            }
+            "Calm & mindful — gentle, soft, no pressure" -> when (type) {
+                "high_risk" -> listOf("Your neck is carrying a lot of tension right now ($pitchStr°). Let's gently sit up and take a deep breath.", "It looks like you're leaning in quite deeply ($pitchStr°). Please remember to be kind to your spine.", "Take a gentle pause. Your neck is flexed at $pitchStr°, let's slowly bring it back to a comfortable center.")
+                "moderate" -> listOf("A gentle reminder to check your posture ($pitchStr°). Small adjustments make a big difference.", "You seem to be slightly slouching ($pitchStr°). Let's gently reset your shoulders.", "Whenever you're ready, try to ease back into a more upright position ($pitchStr°).")
+                else -> listOf("Your posture is beautiful right now. Take a deep breath and enjoy this alignment.", "Wonderful alignment. Your spine is balanced and at ease.", "You are sitting perfectly. Keep honoring your body's natural shape.")
+            }
+            else -> when (type) { // "Just the facts" or default
+                "high_risk" -> listOf("High Risk Mode ($pitchStr° flexion): You are heavily slouched. Please sit up.", "Critical flexion detected: $pitchStr°. Immediate correction recommended.", "Warning: $pitchStr° neck flexion. This exceeds safe ergonomic limits.")
+                "moderate" -> listOf("Moderate Risk ($pitchStr° flexion): Your neck is slightly crouched.", "Notice: $pitchStr° flexion. Adjust your posture to prevent strain.", "Alert: $pitchStr° flexion detected. Straighten your back.")
+                else -> listOf("Posture looks great! Keep it up.", "Posture check passed: normal alignment.", "Status: Healthy alignment. No correction needed.")
+            }
+        }
+        return messages.random()
     }
 
     companion object {

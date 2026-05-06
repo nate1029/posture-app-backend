@@ -25,3 +25,14 @@
 #-keepclassmembers class fqcn.of.javascript.interface.for.webview {
 #   public *;
 #}
+
+# ── Strip Logging ──
+# Only strip verbose/info/debug. Keep warn/error so crash-context
+# logging from MainViewModel, FirebaseAuthManager, etc. survives in
+# release builds and reaches Crashlytics breadcrumbs.
+-assumenosideeffects class android.util.Log {
+    public static boolean isLoggable(java.lang.String, int);
+    public static int v(...);
+    public static int i(...);
+    public static int d(...);
+}

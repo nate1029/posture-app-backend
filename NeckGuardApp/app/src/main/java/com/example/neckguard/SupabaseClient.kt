@@ -34,6 +34,7 @@ object SupabaseClient {
         }
 
         try {
+            // ── Step 1: Try to sign up ──────────────────────────────
             val signupUrl = URL("$BASE_URL/auth/v1/signup")
             val signupConn = openConnection(signupUrl, "POST")
             writeBody(signupConn, jsonBody.toString())
@@ -42,19 +43,39 @@ object SupabaseClient {
             if (signupCode in 200..299) {
                 val success = parseAuthResponse(signupConn)
                 if (success) return@withContext null
-                // Signup HTTP 2xx but no access_token in body = email confirmation
-                // is required server-side. Tell the user what to do without leaking
-                // implementation details about Supabase's config.
-                return@withContext "Check your email to confirm your address, then come back and sign in."
+                // Signup returned 200 but no access_token.
+                // This means "Confirm email" is ON in Supabase.
+                // We CANNOT wait for a confirmation email because this
+                // is a bridge account. Fall through to attempt login,
+                // because Supabase may still allow password login even
+                // for unconfirmed users depending on settings.
+                LogX.w(TAG, "Signup 200 but no token — email confirmation is likely enabled. Attempting login anyway…")
             }
 
-            val signupErrorStr = signupConn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-            val signupJsonStr = try { JSONObject(signupErrorStr).optString("msg", "") } catch(e:Exception) {""}
+            // ── Step 2: Check signup error ──────────────────────────
+            val signupErrorStr = if (signupCode !in 200..299) {
+                signupConn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+            } else ""
 
-            if (!signupJsonStr.contains("already registered", true) && !signupJsonStr.contains("already exists", true)) {
-                return@withContext signupJsonStr.ifEmpty { "Signup Failed: $signupCode" }
+            var isAlreadyRegistered = signupCode in 200..299 // treat tokenless-200 as "exists"
+            if (!isAlreadyRegistered) {
+                try {
+                    val errorObj = JSONObject(signupErrorStr)
+                    val msg = errorObj.optString("msg", errorObj.optString("message", ""))
+                    val errorCode = errorObj.optString("error_code", "")
+                    if (errorCode == "user_already_exists"
+                        || msg.contains("already registered", true)
+                        || msg.contains("already exists", true)) {
+                        isAlreadyRegistered = true
+                    }
+                } catch (_: Exception) {}
             }
 
+            if (!isAlreadyRegistered) {
+                return@withContext signupErrorStr.ifEmpty { "Signup Failed: $signupCode" }
+            }
+
+            // ── Step 3: User exists → log in with password ──────────
             val loginUrl = URL("$BASE_URL/auth/v1/token?grant_type=password")
             val loginConn = openConnection(loginUrl, "POST")
             writeBody(loginConn, jsonBody.toString())
@@ -63,13 +84,23 @@ object SupabaseClient {
             if (loginCode in 200..299) {
                 val success = parseAuthResponse(loginConn)
                 if (success) return@withContext null
-                return@withContext "Login successful but failed to read token."
+                return@withContext "Login returned 200 but no token in response."
             }
 
+            // ── Step 4: Parse login error ───────────────────────────
             val loginErrorStr = loginConn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-            val loginErrorMsg = try { JSONObject(loginErrorStr).optString("error_description", "") } catch(e:Exception) {""}
+            val loginErrorMsg = try {
+                val obj = JSONObject(loginErrorStr)
+                obj.optString("error_description", obj.optString("msg", obj.optString("message", "")))
+            } catch (_: Exception) { "" }
 
-            return@withContext loginErrorMsg.ifEmpty { "Incorrect email or password." }
+            // If login fails because email isn't confirmed, tell the developer
+            if (loginErrorMsg.contains("not confirmed", true)
+                || loginErrorMsg.contains("Email not confirmed", true)) {
+                return@withContext "Supabase email confirmation is ENABLED. Disable it in Supabase Dashboard → Authentication → Providers → Email → turn OFF 'Confirm email'."
+            }
+
+            return@withContext loginErrorMsg.ifEmpty { "Login failed ($loginCode). Raw: $loginErrorStr" }
 
         } catch (e: Exception) {
             LogX.e(TAG, "Auth exception", e)
@@ -114,29 +145,43 @@ object SupabaseClient {
      * Pushes the completed Onboarding profile to the 'user_profiles' table securely using their Auth Token.
      */
     suspend fun saveProfile(
-        name: String, age: String, vibe: String, context: String, health: String, interval: Long
+        name: String, age: String, vibe: String, context: String, health: String, interval: Long,
+        lifetimePoints: Int, totalExercisesDone: Int, assignedExercises: List<String>, completedExercisesToday: Set<String>
     ): Boolean = withContext(Dispatchers.IO) {
         if (userId == null || accessToken == null) {
             LogX.e(TAG, "Cannot save profile without being authenticated!")
             return@withContext false
         }
+        val uid = userId ?: return@withContext false
 
         val jsonBody = JSONObject().apply {
-            put("user_id", userId)
+            put("user_id", uid)
             put("name", name)
             put("age_group", age)
             put("notification_vibe", vibe)
             put("usage_context", context)
             put("neck_health", health)
             put("check_interval_ms", interval)
+            put("lifetime_points", lifetimePoints)
+            put("total_exercises_done", totalExercisesDone)
+            put("assigned_exercises", org.json.JSONArray(assignedExercises))
+            put("completed_exercises_today", org.json.JSONArray(completedExercisesToday.toList()))
         }.toString()
 
-        val code = executeAuthed("POST", "/rest/v1/user_profiles", jsonBody) { conn ->
-            conn.setRequestProperty("Prefer", "resolution=merge-duplicates")
-        } ?: return@withContext false
+        // Attempt a raw POST first (creates a new row). 
+        // We do NOT use resolution=merge-duplicates because it requires strict database schema constraints.
+        val code = executeAuthed("POST", "/rest/v1/user_profiles", jsonBody)
+        
+        // If POST fails with 409 Conflict, the row already exists. Fallback to PATCH to update it!
+        if (code == 409) {
+            val fallbackCode = executeAuthed("PATCH", "/rest/v1/user_profiles?user_id=eq.$uid", jsonBody)
+            val patchSuccess = fallbackCode != null && fallbackCode in 200..299
+            LogX.d(TAG, "saveProfile: PATCH fallback code=$fallbackCode success=$patchSuccess")
+            return@withContext patchSuccess
+        }
 
-        val success = code in 200..299
-        LogX.d(TAG, "Profile Save result: $code - $success")
+        val success = code != null && code in 200..299
+        LogX.d(TAG, "saveProfile: POST code=$code success=$success")
         return@withContext success
     }
 
@@ -166,6 +211,75 @@ object SupabaseClient {
         val success = code in 200..299
         LogX.d(TAG, "Crash Upload result: $code - $success")
         return@withContext success
+    }
+
+    /**
+     * Uploads posture logs to Supabase for the current user.
+     * Upserts using user_id and timestamp_start_ms as keys.
+     */
+    suspend fun uploadPostureLogs(logs: List<com.example.neckguard.data.local.PostureLog>): Boolean = withContext(Dispatchers.IO) {
+        val uid = userId
+        if (uid.isNullOrEmpty() || accessToken.isNullOrEmpty() || logs.isEmpty()) return@withContext false
+
+        val jsonArray = org.json.JSONArray()
+        logs.forEach { log ->
+            jsonArray.put(JSONObject().apply {
+                put("user_id", uid)
+                put("timestamp_start_ms", log.timestampStartMs)
+                put("duration_ms", log.durationMs)
+                put("healthy_ms", log.healthyMs)
+                put("slouched_ms", log.slouchedMs)
+            })
+        }
+
+        val code = executeAuthed("POST", "/rest/v1/posture_logs", jsonArray.toString()) { conn ->
+            conn.setRequestProperty("Prefer", "resolution=merge-duplicates")
+        } ?: return@withContext false
+        return@withContext code in 200..299
+    }
+
+    /**
+     * Fetches all posture logs for the current user from Supabase.
+     */
+    suspend fun fetchPostureLogs(): List<com.example.neckguard.data.local.PostureLog> = withContext(Dispatchers.IO) {
+        val uid = userId ?: return@withContext emptyList()
+        if (accessToken.isNullOrEmpty()) return@withContext emptyList()
+
+        var attempts = 0
+        while (attempts < 2) {
+            val token = accessToken ?: return@withContext emptyList()
+            try {
+                val url = URL("$BASE_URL/rest/v1/posture_logs?user_id=eq.$uid&select=*")
+                val conn = openConnection(url, "GET", token)
+                val code = conn.responseCode
+                if (code == 401 && attempts == 0) {
+                    attempts++
+                    if (refreshAccessToken()) continue
+                    return@withContext emptyList()
+                }
+                if (code in 200..299) {
+                    val body = conn.inputStream.bufferedReader().use { it.readText() }
+                    val arr = org.json.JSONArray(body)
+                    val logs = mutableListOf<com.example.neckguard.data.local.PostureLog>()
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        logs.add(com.example.neckguard.data.local.PostureLog(
+                            obj.getLong("timestamp_start_ms"),
+                            obj.getLong("duration_ms"),
+                            obj.getLong("healthy_ms"),
+                            obj.getLong("slouched_ms"),
+                            true // isSynced = true
+                        ))
+                    }
+                    return@withContext logs
+                }
+                return@withContext emptyList()
+            } catch (e: Exception) {
+                LogX.e(TAG, "Failed to fetch posture logs", e)
+                return@withContext emptyList()
+            }
+        }
+        emptyList()
     }
 
     /**
@@ -280,6 +394,55 @@ object SupabaseClient {
                 return@withContext false
             }
         }
+    }
+
+    /**
+     * Deletes ALL server-side data for the current user — posture logs, crash
+     * reports, and the user profile row. Required for Google Play's mandatory
+     * account deletion policy.
+     *
+     * Order: logs → crashes → profile, so the profile (which is the "root"
+     * row) is the last to go. If any step fails we still attempt the rest.
+     *
+     * Returns true if the profile row was successfully deleted (the most
+     * critical part); false otherwise.
+     */
+    suspend fun deleteUserData(): Boolean = withContext(Dispatchers.IO) {
+        val uid = userId ?: return@withContext false
+        if (accessToken.isNullOrEmpty()) return@withContext false
+
+        // Delete posture logs (best-effort — may be empty)
+        try {
+            executeAuthed("DELETE", "/rest/v1/posture_logs?user_id=eq.$uid", null)
+        } catch (e: Exception) {
+            LogX.w(TAG, "Failed to delete posture logs", e)
+        }
+
+        // Delete crash reports (best-effort)
+        try {
+            executeAuthed("DELETE", "/rest/v1/crash_reports?user_id=eq.$uid", null)
+        } catch (e: Exception) {
+            LogX.w(TAG, "Failed to delete crash reports", e)
+        }
+
+        // Delete user profile (critical)
+        val profileCode = try {
+            executeAuthed("DELETE", "/rest/v1/user_profiles?user_id=eq.$uid", null)
+        } catch (e: Exception) {
+            LogX.e(TAG, "Failed to delete user profile", e)
+            null
+        }
+
+        // Delete the actual Supabase Auth user via RPC
+        try {
+            executeAuthed("POST", "/rest/v1/rpc/delete_my_account", "{}")
+        } catch (e: Exception) {
+            LogX.w(TAG, "Failed to delete auth user via RPC (make sure the SQL script is executed in Supabase)", e)
+        }
+
+        val success = profileCode != null && profileCode in 200..299
+        LogX.d(TAG, "deleteUserData: profile delete code=$profileCode success=$success")
+        return@withContext success
     }
 
     fun clearSession() {

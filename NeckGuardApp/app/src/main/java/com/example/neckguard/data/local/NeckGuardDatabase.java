@@ -17,6 +17,7 @@ public abstract class NeckGuardDatabase extends RoomDatabase {
                 if (INSTANCE == null) {
                     INSTANCE = Room.databaseBuilder(context.getApplicationContext(),
                             NeckGuardDatabase.class, "neckguard_db")
+                            .fallbackToDestructiveMigration()
                             .build();
                 }
             }
