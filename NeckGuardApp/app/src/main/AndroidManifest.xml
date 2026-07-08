@@ -5,12 +5,22 @@
     <!-- Required Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
-    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Strip ACTIVITY_RECOGNITION injected by a transitive dependency's merged
+         manifest. The app reads accelerometer/gyroscope directly and has no
+         activity-recognition feature, but the permission alone triggers Google
+         Play's "Health apps" classification, which forces an organization
+         developer account. tools:node="remove" guarantees it never ships in the
+         final AAB regardless of dependency version resolution. -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"
+        tools:node="remove" />
+
     <!-- SCHEDULE_EXACT_ALARM removed: the fallback setAndAllowWhileIdle() path
          is sufficient for service-restart timing, and the permission triggers
          Play Store review scrutiny on Android 14+ without real benefit. -->
@@ -36,7 +46,11 @@
             android:name=".service.NeckGuardService" 
             android:enabled="true" 
             android:exported="false"
-            android:foregroundServiceType="health" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Posture sensor monitoring using accelerometer and gyroscope" />
+        </service>
 
         <activity
             android:name=".MainActivity"
@@ -49,26 +63,6 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Deep link handler for Firebase Magic Link (passwordless email sign-in).
-                 When the user clicks the sign-in link in their email, this intent filter
-                 routes the request to MainActivity, which completes the auth flow. -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https"
-                    android:host="nudgeup-4aa6e.firebaseapp.com"
-                    android:pathPrefix="/__/auth/action" />
-            </intent-filter>
-            <!-- Fallback interception for the continue URL if Chrome processes the link -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https"
-                    android:host="nudgeup-4aa6e.firebaseapp.com"
-                    android:path="/login" />
-            </intent-filter>
         </activity>
 
         <!-- The Transparent Workaround Activity -->
@@ -79,6 +73,13 @@
             android:screenOrientation="portrait"
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- Posture Insight Screen — "Why was my posture bad?" -->
+        <activity
+            android:name=".PostureInsightActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.NeckGuard" />
 
         <!-- Auto-Start on Phone Reboot -->
         <receiver

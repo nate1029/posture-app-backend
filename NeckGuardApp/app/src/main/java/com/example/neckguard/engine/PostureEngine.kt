@@ -14,8 +14,21 @@ object PostureEngine {
     private const val TAG = "PostureEngine"
     private const val GRAVITY = 9.81f
     private const val MOTION_THRESHOLD = 3.0f
-    private const val NECK_SCALE = 0.82f
+    private const val NECK_SCALE = 0.85f
     private const val ALPHA = 0.96f // Complementary filter constant
+
+    // ── Research-backed baseline ────────────────────────────────────────
+    // Ergonomic research (Hansraj 2014, NIH cervical spine studies) shows:
+    //   0–15° neck flexion → acceptable (~27 lbs spinal load)
+    //   15–30°             → moderate strain (~40 lbs)
+    //   30°+               → high risk (~49–60 lbs)
+    // A user holding the phone at eye level produces a sensor pitch of
+    // ~10–15°. We subtract 10° so that true eye-level usage maps to
+    // ~0° flexion (GOOD), a 28° slouch maps to ~15° (MODERATE boundary),
+    // and a 39° slouch maps to ~25° (POOR boundary). Previously 15°
+    // baseline caused typical phone-in-lap use (~35°) to register only
+    // 17° flexion, which barely triggered any alerts.
+    private const val BASELINE_PITCH = 10f
 
     // @Volatile because [currentPitch] is written on the sensor thread and
     // read by NeckGuardService.sendPostureAlert() which sometimes runs on a
@@ -23,6 +36,12 @@ object PostureEngine {
     // happens-before edge, ARM can return a stale value to readers on
     // another core.
     @Volatile var currentPitch: Float = 90f // Start assuming phone is flat on desk
+
+    // Exposed so CheckPostureActivity can read the same flexion value the
+    // sensor engine computed, ensuring both systems agree on the math.
+    @Volatile var lastNeckFlexion: Float = 0f
+        private set
+
     private var lastTimestampNS: Long = 0L
 
     enum class PostureState {
@@ -114,13 +133,22 @@ object PostureEngine {
         currentPitch = currentPitch.coerceIn(-90f, 90f)
 
         // 5. Physiological Neck Mapping
-        // Floor negative pitch to 0. Leaning backward is 0 flexion (perfect posture).
-        val neckFlexion = if (currentPitch < 0) 0f else currentPitch * NECK_SCALE
+        // Research-backed: subtract BASELINE_PITCH (15°) so eye-level usage = 0° flexion.
+        // Scale factor maps phone tilt to estimated cervical flexion.
+        val relativePitch = currentPitch - BASELINE_PITCH
+        
+        // Floor negative pitch to 0. Leaning backward or holding upright is 0 flexion (perfect posture).
+        val neckFlexion = if (relativePitch < 0) 0f else relativePitch * NECK_SCALE
+        lastNeckFlexion = neckFlexion
+
+        if (com.example.neckguard.BuildConfig.DEBUG) {
+            Log.d(TAG, "Pitch=${String.format("%.1f", currentPitch)}° Flexion=${String.format("%.1f", neckFlexion)}°")
+        }
 
         // 6. Classification — moderate/poor boundary is configurable via Remote Config
         val slouchThreshold = RemoteConfigManager.slouchAngleThreshold
         return when {
-            currentPitch > 75f        -> PostureState.IDLE // Phone resting flat
+            currentPitch > 80f        -> PostureState.IDLE // Phone resting flat
             neckFlexion < 15f         -> PostureState.GOOD
             neckFlexion < slouchThreshold -> PostureState.MODERATE
             else                      -> PostureState.POOR

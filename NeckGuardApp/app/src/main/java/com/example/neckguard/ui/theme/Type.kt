@@ -105,7 +105,7 @@ val Typography = Typography(
     bodySmall = TextStyle(
         fontFamily = DmSans,
         fontWeight = FontWeight.Normal,
-        fontSize = 12.sp,
+        fontSize = 14.sp,
         lineHeight = 18.sp
     ),
 
@@ -113,7 +113,7 @@ val Typography = Typography(
     labelLarge = TextStyle(
         fontFamily = DmSans,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 12.sp,
+        fontSize = 14.sp,
         lineHeight = 16.sp,
         letterSpacing = 0.02.sp
     ),
@@ -121,7 +121,7 @@ val Typography = Typography(
     labelMedium = TextStyle(
         fontFamily = DmSans,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 11.sp,
+        fontSize = 13.sp,
         lineHeight = 14.sp,
         letterSpacing = 0.96.sp  // ~0.08em at 12px base
     ),
@@ -129,7 +129,7 @@ val Typography = Typography(
     labelSmall = TextStyle(
         fontFamily = DmSans,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 11.sp,
+        fontSize = 13.sp,
         lineHeight = 14.sp,
         letterSpacing = 0.96.sp
     )

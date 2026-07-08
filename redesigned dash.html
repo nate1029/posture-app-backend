@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NudgeUp Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: #080f08;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: 'DM Sans', sans-serif;
+    }
+
+    /* ── Phone shell ── */
+    .phone {
+      width: 360px;
+      min-height: 780px;
+      border-radius: 40px;
+      background: #0f1a12;
+      overflow: hidden;
+      border: 1.5px solid #1e301e;
+      position: relative;
+      box-shadow: 0 40px 80px rgba(0,0,0,.7), 0 0 0 1px #0a100a;
+    }
+
+    /* ── Status bar ── */
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px 8px;
+      font-size: 12px;
+      color: #6a8a6a;
+      font-weight: 500;
+    }
+    .status-icons {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .status-icons i { font-size: 14px; }
+
+    /* ── Header section ── */
+    .header {
+      padding: 8px 20px 22px;
+      position: relative;
+    }
+    .header::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, #1e301e 30%, #1e301e 70%, transparent);
+    }
+
+    .header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+    .avatar-name {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #1e3a1e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      font-weight: 600;
+      color: #7fcf7f;
+      border: 1.5px solid #2d5a2d;
+      flex-shrink: 0;
+    }
+    .greeting-line {
+      font-size: 10px;
+      color: #5a7a5a;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      margin-bottom: 1px;
+    }
+    .user-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: #e0f0e0;
+    }
+    .settings-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: #141f14;
+      border: 0.5px solid #243a24;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .settings-btn:hover { background: #1e2e1e; }
+    .settings-btn i { font-size: 16px; color: #4a7a4a; }
+
+    .date-badge {
+      font-size: 10px;
+      color: #4a6a4a;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+
+    /* ── Score hero ── */
+    .score-hero {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+    .score-ring-wrap {
+      position: relative;
+      width: 108px;
+      height: 108px;
+      flex-shrink: 0;
+    }
+    .score-ring-wrap svg {
+      transform: rotate(-90deg);
+    }
+    .score-ring-track { fill: none; stroke: #1a2e1a; stroke-width: 9; }
+    .score-ring-fill  { fill: none; stroke: #4a9a4a; stroke-width: 9; stroke-linecap: round;
+                        stroke-dasharray: 283; stroke-dashoffset: 113;
+                        transition: stroke-dashoffset 1s ease; }
+    .score-center {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+    }
+    .score-num {
+      font-family: 'DM Serif Display', serif;
+      font-size: 34px;
+      color: #e0f0e0;
+      line-height: 1;
+    }
+    .score-unit {
+      font-size: 9px;
+      color: #5a7a5a;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    .score-info { flex: 1; }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #241400;
+      border: 0.5px solid #4a2c00;
+      border-radius: 20px;
+      padding: 4px 10px;
+      margin-bottom: 9px;
+    }
+    .status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #d4820a;
+    }
+    .status-pill span {
+      font-size: 11px;
+      color: #d4820a;
+      font-weight: 500;
+    }
+    .score-desc {
+      font-size: 12px;
+      color: #8aaa8a;
+      line-height: 1.55;
+      margin-bottom: 5px;
+    }
+    .score-delta {
+      font-size: 11px;
+      color: #4a6a4a;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .score-delta i { font-size: 11px; }
+
+    /* ── Resume button ── */
+    .resume-btn {
+      width: 100%;
+      padding: 13px;
+      border-radius: 14px;
+      background: #172817;
+      border: 0.5px solid #2d4a2d;
+      color: #7fcf7f;
+      font-size: 13px;
+      font-weight: 500;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .resume-btn:hover  { background: #1e3a1e; }
+    .resume-btn:active { transform: scale(0.98); }
+    .resume-btn i { font-size: 15px; }
+
+    /* ── Stats row ── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      padding: 16px 16px 12px;
+    }
+    .stat-card {
+      background: #111a11;
+      border-radius: 14px;
+      border: 0.5px solid #1a281a;
+      padding: 12px 8px;
+      text-align: center;
+    }
+    .stat-emoji { font-size: 18px; margin-bottom: 5px; }
+    .stat-val {
+      font-size: 20px;
+      font-weight: 600;
+      color: #e0f0e0;
+      line-height: 1.1;
+    }
+    .stat-val.amber { color: #d4820a; }
+    .stat-val.green { color: #7fcf7f; }
+    .stat-val.coral { color: #cf8a7f; }
+    .stat-lbl {
+      font-size: 9px;
+      color: #4a6a4a;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+      margin-top: 3px;
+    }
+
+    /* ── Streak bar ── */
+    .streak-bar {
+      margin: 0 16px 14px;
+      background: #120f04;
+      border: 0.5px solid #2a2008;
+      border-radius: 14px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .streak-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .streak-flame { font-size: 20px; }
+    .streak-text {
+      font-size: 14px;
+      font-weight: 600;
+      color: #e0a020;
+      margin-bottom: 1px;
+    }
+    .streak-sub { font-size: 10px; color: #6a5020; }
+    .nudge-timer { text-align: right; }
+    .timer-lbl {
+      font-size: 9px;
+      color: #5a4020;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }
+    .timer-val {
+      font-size: 16px;
+      font-weight: 600;
+      color: #c07010;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Nudge card ── */
+    .nudge-card {
+      margin: 0 16px 14px;
+      background: #110e04;
+      border-radius: 16px;
+      border: 0.5px solid #302208;
+      padding: 14px;
+    }
+    .nudge-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .nudge-icon-wrap {
+      width: 30px; height: 30px;
+      border-radius: 8px;
+      background: #1e1508;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      flex-shrink: 0;
+    }
+    .nudge-meta-col { flex: 1; }
+    .nudge-meta-top {
+      font-size: 9px;
+      color: #7a5a20;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .nudge-fact-badge {
+      display: inline-block;
+      font-size: 9px;
+      color: #5a8a5a;
+      background: #121e12;
+      border: 0.5px solid #1e3a1e;
+      border-radius: 8px;
+      padding: 2px 7px;
+      margin-top: 2px;
+    }
+    .nudge-title {
+      font-size: 13px;
+      color: #e8c060;
+      font-weight: 500;
+      line-height: 1.55;
+      margin-bottom: 10px;
+    }
+    .nudge-why {
+      background: #0c0a02;
+      border-radius: 10px;
+      border-left: 2px solid #2a2008;
+      padding: 9px 11px;
+      font-size: 11px;
+      color: #806a40;
+      font-style: italic;
+      line-height: 1.5;
+    }
+    .nudge-why strong {
+      display: block;
+      font-size: 9px;
+      font-style: normal;
+      color: #5a4820;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 3px;
+    }
+
+    /* ── Exercises ── */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      margin-bottom: 10px;
+    }
+    .section-label {
+      font-size: 10px;
+      color: #4a6a4a;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+    }
+    .see-all {
+      font-size: 11px;
+      color: #3a6a3a;
+      cursor: pointer;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .see-all:hover { color: #6aaa6a; }
+
+    .exercises-wrap {
+      margin: 0 16px 20px;
+      background: #111a11;
+      border-radius: 16px;
+      border: 0.5px solid #1a281a;
+      overflow: hidden;
+    }
+    .ex-wrap-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 13px 14px 6px;
+    }
+    .ex-wrap-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: #b0ccb0;
+    }
+    .ex-count-label {
+      font-size: 11px;
+      color: #4a6a4a;
+    }
+    .ex-progress-track {
+      height: 3px;
+      background: #182018;
+      margin: 0 14px 10px;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .ex-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: #4a9a4a;
+      border-radius: 2px;
+      transition: width 0.4s ease;
+    }
+
+    .ex-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 14px;
+      border-top: 0.5px solid #182018;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .ex-item:hover { background: #141f14; }
+
+    .ex-check {
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      border: 1.5px solid #2a4a2a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .ex-check i { font-size: 12px; color: #6acf6a; display: none; }
+    .ex-check.done {
+      background: #1e3a1e;
+      border-color: #4a9a4a;
+    }
+    .ex-check.done i { display: block; }
+
+    .ex-name {
+      flex: 1;
+      font-size: 13px;
+      color: #90b090;
+      transition: color 0.2s, text-decoration 0.2s;
+    }
+    .ex-name.done {
+      text-decoration: line-through;
+      color: #3a5a3a;
+    }
+    .ex-tag {
+      font-size: 10px;
+      color: #3a6a3a;
+      background: #141f14;
+      border-radius: 8px;
+      padding: 3px 9px;
+      border: 0.5px solid #1e301e;
+    }
+
+    /* ── Bottom nav ── */
+    .bottom-nav {
+      display: flex;
+      background: #090f09;
+      border-top: 0.5px solid #182018;
+      padding: 10px 0 22px;
+    }
+    .nav-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 4px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .nav-item:hover { opacity: 0.8; }
+    .nav-item i { font-size: 20px; color: #2d4a2d; }
+    .nav-item i.active { color: #7fcf7f; }
+    .nav-label {
+      font-size: 10px;
+      color: #2d4a2d;
+    }
+    .nav-label.active { color: #7fcf7f; }
+  </style>
+</head>
+<body>
+
+<div class="phone">
+
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <span>2:35</span>
+    <div class="status-icons">
+      <i class="ti ti-bluetooth"></i>
+      <i class="ti ti-wifi"></i>
+      <i class="ti ti-battery-2"></i>
+      <span>38%</span>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-row">
+      <div class="avatar-name">
+        <div class="avatar">M</div>
+        <div>
+          <div class="greeting-line">Good morning</div>
+          <div class="user-name">Moge 👋</div>
+        </div>
+      </div>
+      <button class="settings-btn" aria-label="Settings">
+        <i class="ti ti-settings"></i>
+      </button>
+    </div>
+
+    <div class="date-badge">Saturday, 23 May · Posture scan complete</div>
+
+    <!-- Score Hero -->
+    <div class="score-hero">
+      <div class="score-ring-wrap">
+        <svg width="108" height="108" viewBox="0 0 108 108">
+          <circle class="score-ring-track" cx="54" cy="54" r="45"/>
+          <circle class="score-ring-fill" id="ringFill" cx="54" cy="54" r="45"/>
+        </svg>
+        <div class="score-center">
+          <div class="score-num">60</div>
+          <div class="score-unit">Score</div>
+        </div>
+      </div>
+
+      <div class="score-info">
+        <div class="status-pill">
+          <div class="status-dot"></div>
+          <span>Needs Work</span>
+        </div>
+        <p class="score-desc">Small adjustments can move you to "Good" today. Keep going.</p>
+        <div class="score-delta">
+          <i class="ti ti-arrow-up"></i>
+          Same as yesterday
+        </div>
+      </div>
+    </div>
+
+    <button class="resume-btn" id="resumeBtn">
+      <i class="ti ti-player-play"></i>
+      Resume Monitoring
+    </button>
+  </div>
+
+  <!-- Stats Row -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-emoji">⚡</div>
+      <div class="stat-val amber">1</div>
+      <div class="stat-lbl">Day streak</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-emoji">🏋️</div>
+      <div class="stat-val green" id="exStatVal">0/3</div>
+      <div class="stat-lbl">Exercises</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-emoji">🔔</div>
+      <div class="stat-val coral">4</div>
+      <div class="stat-lbl">Nudges</div>
+    </div>
+  </div>
+
+  <!-- Streak Bar -->
+  <div class="streak-bar">
+    <div class="streak-left">
+      <span class="streak-flame">🔥</span>
+      <div>
+        <div class="streak-text">1-day streak</div>
+        <div class="streak-sub">Check in tomorrow to keep it alive</div>
+      </div>
+    </div>
+    <div class="nudge-timer">
+      <div class="timer-lbl">Next nudge</div>
+      <div class="timer-val" id="timerVal">00:00</div>
+    </div>
+  </div>
+
+  <!-- Nudge Card -->
+  <div class="nudge-card">
+    <div class="nudge-card-header">
+      <div class="nudge-icon-wrap">💡</div>
+      <div class="nudge-meta-col">
+        <div class="nudge-meta-top">Today's Nudge</div>
+        <div class="nudge-fact-badge">Fact</div>
+      </div>
+    </div>
+    <p class="nudge-title">
+      "One hour of sustained static posture — even perfect — is still harmful to your body."
+    </p>
+    <div class="nudge-why">
+      <strong>Why this works</strong>
+      Movement is the point. Your body is designed to shift, not to stay still.
+    </div>
+  </div>
+
+  <!-- Exercises Section -->
+  <div class="section-header">
+    <div class="section-label">Today's Exercises</div>
+    <a class="see-all">See all →</a>
+  </div>
+
+  <div class="exercises-wrap">
+    <div class="ex-wrap-header">
+      <div class="ex-wrap-title">Assigned routine</div>
+      <div class="ex-count-label" id="exCountLabel">0 / 3 done</div>
+    </div>
+    <div class="ex-progress-track">
+      <div class="ex-progress-fill" id="exProgressBar"></div>
+    </div>
+
+    <div class="ex-item" onclick="toggleExercise(this, 0)">
+      <div class="ex-check" id="check-0"><i class="ti ti-check"></i></div>
+      <div class="ex-name" id="name-0">20-20-20 Rule</div>
+      <div class="ex-tag">Eye Relief</div>
+    </div>
+    <div class="ex-item" onclick="toggleExercise(this, 1)">
+      <div class="ex-check" id="check-1"><i class="ti ti-check"></i></div>
+      <div class="ex-name" id="name-1">Chin Tuck</div>
+      <div class="ex-tag">Neck</div>
+    </div>
+    <div class="ex-item" onclick="toggleExercise(this, 2)">
+      <div class="ex-check" id="check-2"><i class="ti ti-check"></i></div>
+      <div class="ex-name" id="name-2">Shoulder Roll</div>
+      <div class="ex-tag">Upper Back</div>
+    </div>
+  </div>
+
+  <!-- Bottom Nav -->
+  <div class="bottom-nav">
+    <div class="nav-item">
+      <i class="ti ti-home active"></i>
+      <div class="nav-label active">Home</div>
+    </div>
+    <div class="nav-item">
+      <i class="ti ti-chart-bar"></i>
+      <div class="nav-label">Progress</div>
+    </div>
+    <div class="nav-item">
+      <i class="ti ti-heart"></i>
+      <div class="nav-label">Exercises</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  /* ── Exercise toggle ── */
+  const totalEx = 3;
+  let doneCount = 0;
+  const doneSets = new Set();
+
+  function toggleExercise(row, idx) {
+    const check = document.getElementById('check-' + idx);
+    const name  = document.getElementById('name-'  + idx);
+
+    if (doneSets.has(idx)) {
+      doneSets.delete(idx);
+      check.classList.remove('done');
+      name.classList.remove('done');
+    } else {
+      doneSets.add(idx);
+      check.classList.add('done');
+      name.classList.add('done');
+    }
+
+    doneCount = doneSets.size;
+    const pct = Math.round((doneCount / totalEx) * 100);
+
+    document.getElementById('exProgressBar').style.width = pct + '%';
+    document.getElementById('exCountLabel').textContent = doneCount + ' / ' + totalEx + ' done';
+
+    const statEl = document.getElementById('exStatVal');
+    statEl.textContent = doneCount + '/' + totalEx;
+    statEl.style.color = doneCount === totalEx ? '#7fcf7f' : '#7fcf7f';
+  }
+
+  /* ── Nudge countdown timer ── */
+  let secs = 0;
+  function tickTimer() {
+    secs++;
+    const m = String(Math.floor(secs / 60)).padStart(2, '0');
+    const s = String(secs % 60).padStart(2, '0');
+    document.getElementById('timerVal').textContent = m + ':' + s;
+  }
+  setInterval(tickTimer, 1000);
+
+  /* ── Resume button ── */
+  const resumeBtn = document.getElementById('resumeBtn');
+  resumeBtn.addEventListener('click', function () {
+    this.innerHTML = '<i class="ti ti-player-pause"></i> Monitoring Active';
+    this.style.background = '#1e3a1e';
+    this.style.color = '#aff0af';
+  });
+
+  /* ── Animate score ring on load ── */
+  window.addEventListener('load', function () {
+    const score = 60;
+    const circumference = 2 * Math.PI * 45; // ≈ 282.74
+    const offset = circumference - (score / 100) * circumference;
+    document.getElementById('ringFill').style.strokeDashoffset = offset;
+  });
+</script>
+</body>
+</html>

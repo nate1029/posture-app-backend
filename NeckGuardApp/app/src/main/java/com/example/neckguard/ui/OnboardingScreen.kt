@@ -35,7 +35,8 @@ fun OnboardingScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(top = 48.dp, start = 24.dp, end = 24.dp, bottom = 24.dp)
+            .statusBarsPadding()
+            .padding(top = 8.dp, start = 24.dp, end = 24.dp, bottom = 24.dp)
     ) {
         // Progress Bar
         LinearProgressIndicator(
@@ -266,14 +267,9 @@ fun QuestionSingleChoice(title: String, subtitle: String, options: List<String>,
 
 @Composable
 fun QuestionIntervalSelection(selectedMs: Long, onSelect: (Long) -> Unit) {
-    val options = listOf(
-        15 * 60 * 1000L to "Every 15 min — I need help",
-        30 * 60 * 1000L to "Every 30 min — recommended",
-        45 * 60 * 1000L to "Every 45 min — balanced",
-        60 * 60 * 1000L to "Every 60 min — light touch",
-        90 * 60 * 1000L to "Every 90 min — just nudges"
-    )
-    
+    // Shared source of truth with Settings so a choice here is always reselectable there (BUG-07).
+    val options = IntervalOptions.presets
+
     Column {
         Text("How often should we check in?", style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(8.dp))

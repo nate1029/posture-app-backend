@@ -19,6 +19,15 @@
 # ── Rive Animation ──
 -keep class app.rive.** { *; }
 
+# ── CameraX (R8 full-mode fix) ──
+# R8 full mode strips Camera2Config (the camera2 implementation bootstrap)
+# even though its reflection entry point, Camera2Config$DefaultProvider, is
+# kept by the library's consumer rules. At runtime DefaultProvider then hits
+# NoClassDefFoundError → ProcessCameraProvider init fails → the posture-check
+# camera never binds in RELEASE builds only (debug skips R8, works fine).
+# Verified via mapping.txt: "Camera2Config -> R8$$REMOVED$$CLASS$$18".
+-keep class androidx.camera.camera2.Camera2Config { *; }
+
 # If your project uses WebView with JS, uncomment the following
 # and specify the fully qualified class name to the JavaScript interface
 # class:

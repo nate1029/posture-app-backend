@@ -11,6 +11,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -25,6 +26,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import androidx.compose.animation.core.animateFloat
 import com.example.neckguard.ui.MainViewModel
+import com.example.neckguard.ui.NudgeUpBrandPill
+import com.example.neckguard.ui.SettingsIconButton
+import com.example.neckguard.ui.IntervalOptions
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
@@ -47,11 +51,27 @@ import com.example.neckguard.ui.theme.NeckGuardTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
     private lateinit var repository: com.example.neckguard.data.UserRepository
     private lateinit var viewModel: com.example.neckguard.ui.MainViewModel
+    val pendingExerciseNavigation = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        checkIntentForNavigation(intent)
+    }
+
+    private fun checkIntentForNavigation(intent: android.content.Intent?) {
+        if (intent?.action == "OPEN_EXERCISE") {
+            pendingExerciseNavigation.value = intent.getStringExtra("exercise_name")
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        checkIntentForNavigation(intent)
 
         // Crash telemetry is initialised in NeckGuardApplication.onCreate;
         // this call is idempotent (guarded by an `initialized` flag) and
@@ -193,16 +213,24 @@ fun AppScreen(viewModel: MainViewModel) {
             androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
         } else true)
     }
-    var hasActivityPerm by remember {
-        mutableStateOf(if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACTIVITY_RECOGNITION) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        } else true)
-    }
+
 
 
     val dashState by viewModel.dashboardState.collectAsState()
     var currentTab by remember { mutableStateOf("Home") }
     var previousTab by remember { mutableStateOf("Home") }
+    
+    val activity = LocalContext.current as MainActivity
+    var initialExercise by remember { mutableStateOf<String?>(null) }
+    val pendingNav by activity.pendingExerciseNavigation.collectAsState()
+    
+    LaunchedEffect(pendingNav) {
+        if (pendingNav != null) {
+            initialExercise = pendingNav
+            currentTab = "Exercises"
+            activity.pendingExerciseNavigation.value = null // Consume
+        }
+    }
     var selectedInterval by remember { mutableStateOf(prefs.getLong("IntervalPreferenceMs", 30 * 60 * 1000L)) }
     var telemetryEnabled by remember {
         mutableStateOf(com.example.neckguard.TelemetryConsent.isEnabled(prefs))
@@ -216,9 +244,7 @@ fun AppScreen(viewModel: MainViewModel) {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
             hasNotifPerm = permissions[android.Manifest.permission.POST_NOTIFICATIONS] ?: hasNotifPerm
         }
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            hasActivityPerm = permissions[android.Manifest.permission.ACTIVITY_RECOGNITION] ?: hasActivityPerm
-        }
+
     }
 
     LaunchedEffect(Unit) {
@@ -226,9 +252,7 @@ fun AppScreen(viewModel: MainViewModel) {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
             permissionsToRequest.add(android.Manifest.permission.POST_NOTIFICATIONS)
         }
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            permissionsToRequest.add(android.Manifest.permission.ACTIVITY_RECOGNITION)
-        }
+
         multiplePermissionsLauncher.launch(permissionsToRequest.toTypedArray())
     }
     
@@ -253,14 +277,14 @@ fun AppScreen(viewModel: MainViewModel) {
             when (tab) {
                 "Exercises" -> {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        com.example.neckguard.ui.ExercisesScreen(viewModel, onSettingsClick = { previousTab = currentTab; currentTab = "Settings" })
+                        com.example.neckguard.ui.ExercisesScreen(viewModel, initialExercise = initialExercise, onSettingsClick = { previousTab = currentTab; currentTab = "Settings" })
                     }
                 }
                 "Settings" -> {
                     val isDeletingAccount by viewModel.isDeletingAccount.collectAsState()
                     val deleteError by viewModel.deleteAccountError.collectAsState()
                     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                        Spacer(modifier = Modifier.height(48.dp))
+                        Spacer(modifier = Modifier.statusBarsPadding())
                         Column(modifier = Modifier.padding(horizontal = 20.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { currentTab = previousTab }.padding(vertical = 8.dp),
@@ -276,7 +300,7 @@ fun AppScreen(viewModel: MainViewModel) {
                                 onIntervalChange = { ms -> selectedInterval = ms; prefs.edit().putLong("IntervalPreferenceMs", ms).apply(); viewModel.updateNextNudge() },
                                 hasCameraPerm = hasCameraPerm,
                                 hasNotifPerm = hasNotifPerm,
-                                hasActivityPerm = hasActivityPerm,
+
                                 onFixPerm = { perm -> multiplePermissionsLauncher.launch(arrayOf(perm)) },
                                 onLogout = {
                                     prefs.edit().putBoolean("isManuallyPaused", true).apply()
@@ -305,19 +329,23 @@ fun AppScreen(viewModel: MainViewModel) {
                                     val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://nudgeupteam.github.io/Privacy/privacy_policy.html"))
                                     context.startActivity(intent)
                                 },
+                                onShowAbout = { previousTab = currentTab; currentTab = "About" },
                                 onDeleteAccount = { viewModel.deleteAccount(context) },
                                 isDeletingAccount = isDeletingAccount,
                                 deleteAccountError = deleteError,
                                 onClearDeleteError = { viewModel.clearDeleteError() }
                             )
                         }
-                        Spacer(modifier = Modifier.height(100.dp))
+                        Spacer(modifier = Modifier.height(140.dp))
                     }
+                }
+                "About" -> {
+                    com.example.neckguard.ui.AboutScreen(onBack = { currentTab = previousTab })
                 }
                 "Rewards" -> {
                     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                         RewardsTab(viewModel, onSettingsClick = { previousTab = currentTab; currentTab = "Settings" })
-                        Spacer(modifier = Modifier.height(100.dp))
+                        Spacer(modifier = Modifier.height(140.dp))
                     }
                 }
                 else -> { // "Home"
@@ -341,13 +369,13 @@ fun AppScreen(viewModel: MainViewModel) {
                                }
                            }
                         )
-                        Spacer(modifier = Modifier.height(100.dp))
+                        Spacer(modifier = Modifier.height(140.dp))
                     }
                 }
             }
         }
 
-        val isBottomBarVisible = currentTab != "Settings"
+        val isBottomBarVisible = currentTab != "Settings" && currentTab != "About"
         val bottomBarOffsetY by androidx.compose.animation.core.animateFloatAsState(
             targetValue = if (isBottomBarVisible) 0f else 150f,
             animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)
@@ -379,6 +407,10 @@ fun AppScreen(viewModel: MainViewModel) {
 
 @Composable
 fun BottomNavBar(currentTab: String, onTabChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    // No navigationBarsPadding() here — NavigationBar's built-in windowInsets draws its
+    // white container down behind the system nav bar while insetting the items above it.
+    // Adding the padding pushed the whole bar up and left a gap showing content underneath
+    // (UI_POLISH_BACKLOG BUG-08).
     NavigationBar(
         modifier = modifier.border(1.dp, FinalMist),
         containerColor = FinalWhite
@@ -445,98 +477,271 @@ fun HomeTab(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            HomeStatsRowCmp(dashState)
+            HomePostureSummaryCmp(dashState)
             HomeStreakCmp(dashState)
             HomeNudgeCmp(dashState)
-            HomeSectionDivider("TODAY'S EXERCISES")
-            HomeExercisesCmp(dashState, exercisesState, onNavigateToExercises)
+            HomeExercisesCmp(dashState, exercisesState, viewModel, onNavigateToExercises)
         }
     }
 }
 
 @Composable
 fun HomeHeaderCmp(userName: String, dashState: com.example.neckguard.ui.DashboardState, onToggle: (Boolean)->Unit, onSettings: ()->Unit) {
+    val headerDate = remember {
+        java.text.SimpleDateFormat("EEEE, d MMMM", java.util.Locale.getDefault())
+            .format(java.util.Date())
+            .uppercase(java.util.Locale.getDefault())
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .background(androidx.compose.ui.graphics.Brush.linearGradient(colors = listOf(FinalMoss, FinalSage, FinalSageLight)))
-            .padding(top = 52.dp, start = 22.dp, end = 22.dp, bottom = 20.dp)
+            .statusBarsPadding()
+            .padding(top = 16.dp, start = 22.dp, end = 22.dp, bottom = 20.dp)
     ) {
         Column {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.background(FinalMoss, shape = RoundedCornerShape(20.dp)).padding(horizontal = 14.dp, vertical = 6.dp)) {
-                     Text("NudgeUp ↑", color = FinalCream, fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                }
-                Box(modifier = Modifier.size(36.dp).background(FinalWhite, shape = CircleShape).border(2.dp, FinalMist, CircleShape).clip(CircleShape).clickable { onSettings() }, contentAlignment = Alignment.Center) {
-                    Text("⚙", fontSize = 20.sp)
-                }
+                NudgeUpBrandPill()
+                SettingsIconButton(onClick = onSettings)
             }
+
             Spacer(modifier = Modifier.height(16.dp))
-            // Recomputed once per composition so the header label always
-            // reflects the current calendar day. Cheap (~µs) — formatting
-            // a Date is not worth caching.
-            val headerDate = remember {
-                java.text.SimpleDateFormat("EEEE, d MMMM", java.util.Locale.getDefault())
-                    .format(java.util.Date())
-                    .uppercase(java.util.Locale.getDefault())
-            }
-            Text(headerDate, fontSize = 12.sp, color = FinalWhite.copy(alpha=0.65f), letterSpacing = 0.06.sp)
-            Spacer(modifier = Modifier.height(4.dp))
-            Row {
-               Text("Hey, ", fontSize = 26.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalWhite)
-               Text(userName, fontSize = 26.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, color = FinalWhite)
-               Text(" 👋", fontSize = 26.sp)
-            }
-            Spacer(modifier = Modifier.height(2.dp))
-            Text("Your posture scan is complete for today.", fontSize = 12.sp, color = FinalWhite.copy(alpha=0.6f))
-            Spacer(modifier = Modifier.height(14.dp))
-            Row(modifier = Modifier.fillMaxWidth().background(FinalWhite.copy(alpha = 0.15f), shape = RoundedCornerShape(16.dp)).padding(14.dp, 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("${dashState.postureScore}", fontSize = 48.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalWhite)
-                Spacer(modifier = Modifier.width(14.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("POSTURE SCORE", fontSize = 10.sp, letterSpacing = 0.07.sp, color = FinalWhite.copy(alpha=0.6f))
-                    val title = if(dashState.postureScore > 80) "Superb 🌟" else if(dashState.postureScore > 60) "Good 👍" else "Needs Work ⚠️"
-                    Text(title, fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalWhite)
-                    Text(if(dashState.scoreDelta >= 0) "↑ +${dashState.scoreDelta} vs yesterday" else "↓ ${dashState.scoreDelta} vs yesterday", fontSize = 11.sp, color = FinalWhite.copy(alpha=0.6f))
-                }
-                Box(modifier = Modifier.size(52.dp), contentAlignment = Alignment.Center) {
+            Text("$headerDate · POSTURE SCAN COMPLETE", fontSize = 13.sp, color = FinalWhite.copy(alpha=0.8f), letterSpacing = 0.8.sp)
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.size(108.dp), contentAlignment = Alignment.Center) {
+                    val animatedScore by androidx.compose.animation.core.animateFloatAsState(
+                        targetValue = dashState.postureScore / 100f,
+                        animationSpec = androidx.compose.animation.core.tween(durationMillis = 1000, easing = androidx.compose.animation.core.EaseOutCubic)
+                    )
                     Canvas(modifier = Modifier.fillMaxSize()) {
-                        drawArc(color = FinalWhite.copy(alpha=0.25f), startAngle = 0f, sweepAngle = 360f, useCenter = false, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4.dp.toPx()))
-                        drawArc(color = FinalWhite, startAngle = -90f, sweepAngle = 360f * (dashState.postureScore/100f), useCenter = false, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round))
+                        drawArc(color = FinalWhite.copy(alpha=0.25f), startAngle = 0f, sweepAngle = 360f, useCenter = false, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 9.dp.toPx()))
+                        drawArc(color = FinalWhite, startAngle = -90f, sweepAngle = 360f * animatedScore, useCenter = false, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 9.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round))
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("${dashState.postureScore}", fontSize = 35.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalWhite)
+                        Text("SCORE", fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalWhite.copy(alpha=0.8f), letterSpacing = 0.5.sp)
                     }
                 }
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition()
-            val dotAlpha by infiniteTransition.animateFloat(
-                initialValue = 0.3f,
-                targetValue = 1f,
-                animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-                    animation = androidx.compose.animation.core.tween(1000, easing = androidx.compose.animation.core.LinearEasing),
-                    repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-                )
-            )
 
-            val activeBgColor = androidx.compose.ui.graphics.Color(0xFFC8E6C9)
-            val activeContentColor = androidx.compose.ui.graphics.Color.Black
-            val pausedBgColor = FinalWhite.copy(alpha=0.1f)
-            val pausedContentColor = androidx.compose.ui.graphics.Color(0xFFF44336)
-            
-            Row(modifier = Modifier
-                .background(if (dashState.isAppActive) activeBgColor else pausedBgColor, shape = RoundedCornerShape(20.dp))
-                .border(1.dp, if (dashState.isAppActive) activeContentColor else pausedContentColor, RoundedCornerShape(20.dp))
-                .clickable { onToggle(!dashState.isAppActive) }
-                .padding(horizontal = 10.dp, vertical = 6.dp), 
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (dashState.isAppActive) {
-                    Box(modifier = Modifier.size(7.dp).background(activeContentColor.copy(alpha = dotAlpha), CircleShape))
-                    Spacer(modifier = Modifier.width(5.dp))
-                    Text("MONITORING ACTIVE", fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = activeContentColor, letterSpacing = 0.06.sp)
-                } else {
-                    Box(modifier = Modifier.size(7.dp).background(pausedContentColor.copy(alpha = 0.5f), CircleShape))
-                    Spacer(modifier = Modifier.width(5.dp))
-                    Text("PAUSED (TAP TO RESUME)", fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = pausedContentColor, letterSpacing = 0.06.sp)
+                Spacer(modifier = Modifier.width(18.dp))
+                Column {
+                    val statusTitle = if(dashState.postureScore > 80) "Superb 🌟" else if(dashState.postureScore > 60) "Good 👍" else "Needs Work ⚠️"
+                    Row(modifier = Modifier.background(FinalWhite.copy(alpha=0.15f), RoundedCornerShape(20.dp)).padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(statusTitle, fontSize = 12.sp, color = FinalWhite, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                    }
+                    Spacer(modifier = Modifier.height(9.dp))
+                    val statusSubtitle = when {
+                        dashState.postureScore > 80 -> "You're crushing it. Keep those habits locked in."
+                        dashState.postureScore > 60 -> "Small adjustments can move you to \"Superb\" today. Keep going."
+                        else -> "Small adjustments can move you to \"Good\" today. Keep going."
+                    }
+                    Text(statusSubtitle, fontSize = 15.sp, color = FinalWhite.copy(alpha=0.9f), lineHeight = 20.sp)
+                    Spacer(modifier = Modifier.height(5.dp))
+                    val deltaText = if(dashState.scoreDelta > 0) "↑ +${dashState.scoreDelta} vs yesterday" else if(dashState.scoreDelta < 0) "↓ ${dashState.scoreDelta} vs yesterday" else "Same as yesterday"
+                    Text(deltaText, fontSize = 14.sp, color = FinalWhite.copy(alpha=0.8f))
                 }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+            Button(
+                onClick = { onToggle(!dashState.isAppActive) },
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = if (dashState.isAppActive) FinalWhite else FinalEarthPale),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(if (dashState.isAppActive) Icons.Default.Check else Icons.Default.PlayArrow, contentDescription = null, tint = FinalMoss, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(if (dashState.isAppActive) "MONITORING ACTIVE" else "RESUME MONITORING", color = FinalMoss, fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, letterSpacing = 0.5.sp)
+            }
+        }
+    }
+}
+
+@Composable
+fun HomeStatsRowCmp(dashState: com.example.neckguard.ui.DashboardState) {
+    Row(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(modifier = Modifier.weight(1f).background(FinalWhite, RoundedCornerShape(14.dp)).border(1.dp, FinalMist, RoundedCornerShape(14.dp)).padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("⚡", fontSize = 19.sp)
+            Spacer(modifier = Modifier.height(5.dp))
+            Text("${dashState.streakDays}", fontSize = 21.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalMoss)
+            Text("DAY STREAK", fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalMuted, letterSpacing = 0.3.sp)
+        }
+        Column(modifier = Modifier.weight(1f).background(FinalWhite, RoundedCornerShape(14.dp)).border(1.dp, FinalMist, RoundedCornerShape(14.dp)).padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("🏋️", fontSize = 19.sp)
+            Spacer(modifier = Modifier.height(5.dp))
+            Text("${dashState.completedExercisesCount}/${dashState.activeExercisesCount}", fontSize = 21.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalMoss)
+            Text("EXERCISES", fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalMuted, letterSpacing = 0.3.sp)
+        }
+        Column(modifier = Modifier.weight(1f).background(FinalWhite, RoundedCornerShape(14.dp)).border(1.dp, FinalMist, RoundedCornerShape(14.dp)).padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("🔔", fontSize = 19.sp)
+            Spacer(modifier = Modifier.height(5.dp))
+            Text("${dashState.nudgesToday}", fontSize = 21.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalCoral)
+            Text("NUDGES", fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalMuted, letterSpacing = 0.3.sp)
+        }
+    }
+}
+
+@Composable
+fun HomePostureSummaryCmp(dashState: com.example.neckguard.ui.DashboardState) {
+    val totalMs = dashState.totalMonitoredMs
+    val healthyMs = dashState.healthyMs
+    val slouchedMs = dashState.slouchedMs
+
+    val hasData = totalMs > 0L
+    val healthyPct = if (hasData) ((healthyMs.toFloat() / totalMs) * 100).toInt().coerceIn(0, 100) else 0
+    val slouchedPct = if (hasData) 100 - healthyPct else 0
+
+    fun formatTime(ms: Long): String {
+        val totalSecs = ms / 1000
+        val hours = totalSecs / 3600
+        val mins = (totalSecs % 3600) / 60
+        return if (hours > 0) "${hours}h ${mins}m" else "${mins}m"
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(FinalWhite, RoundedCornerShape(16.dp))
+            .border(1.dp, FinalMist, RoundedCornerShape(16.dp))
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("\uD83D\uDCCA", fontSize = 17.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "POSTURE SUMMARY",
+                    fontSize = 11.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    color = FinalMuted,
+                    letterSpacing = 0.8.sp
+                )
+            }
+            Text(
+                "Today",
+                fontSize = 12.sp,
+                color = FinalMuted,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+            )
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        if (!hasData) {
+            // Empty state
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("\uD83D\uDCCA", fontSize = 28.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Monitoring is active! Your posture breakdown will appear here shortly.",
+                    fontSize = 13.sp,
+                    color = FinalMuted,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    lineHeight = 18.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+            return
+        }
+
+        // Progress bar
+        val animatedHealthy by androidx.compose.animation.core.animateFloatAsState(
+            targetValue = healthyPct / 100f,
+            animationSpec = androidx.compose.animation.core.tween(800, easing = androidx.compose.animation.core.EaseOutCubic)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(12.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(FinalCoral.copy(alpha = 0.2f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(animatedHealthy)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(FinalMoss)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Stats row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Good posture
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .background(FinalMoss, CircleShape)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Column {
+                    Text(
+                        formatTime(healthyMs),
+                        fontSize = 18.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        color = FinalMoss
+                    )
+                    Text(
+                        "Good posture ($healthyPct%)",
+                        fontSize = 11.sp,
+                        color = FinalMuted
+                    )
+                }
+            }
+
+            // Bad posture
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .background(FinalCoral, CircleShape)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Column {
+                    Text(
+                        formatTime(slouchedMs),
+                        fontSize = 18.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        color = FinalCoral
+                    )
+                    Text(
+                        "Bad posture ($slouchedPct%)",
+                        fontSize = 11.sp,
+                        color = FinalMuted
+                    )
+                }
+            }
+
+            // Total
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    formatTime(totalMs),
+                    fontSize = 18.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    color = FinalBark
+                )
+                Text(
+                    "Total tracked",
+                    fontSize = 11.sp,
+                    color = FinalMuted
+                )
             }
         }
     }
@@ -544,41 +749,80 @@ fun HomeHeaderCmp(userName: String, dashState: com.example.neckguard.ui.Dashboar
 
 @Composable
 fun HomeStreakCmp(dashState: com.example.neckguard.ui.DashboardState) {
-    Row(modifier = Modifier.fillMaxWidth().background(FinalBark, shape = RoundedCornerShape(14.dp)).padding(horizontal = 16.dp, vertical = 11.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Row(verticalAlignment = Alignment.CenterVertically) { Text("⚡", fontSize = 16.sp); Spacer(modifier = Modifier.width(7.dp)); Text("${dashState.streakDays}-day streak", fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalEarthLight) }
-        Row(verticalAlignment = Alignment.CenterVertically) { Text("Next nudge in ", fontSize = 11.sp, color = FinalWhite.copy(alpha=0.4f)); Text("${dashState.nextNudgeMins} min", fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalWhite.copy(alpha=0.75f)) }
+    Row(modifier = Modifier.fillMaxWidth().background(FinalBark, RoundedCornerShape(14.dp)).padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("🔥", fontSize = 21.sp)
+            Spacer(modifier = Modifier.width(10.dp))
+            Column {
+                Text("${dashState.streakDays}-day streak", fontSize = 17.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalEarthLight)
+                Text("Check in tomorrow to keep it alive", fontSize = 13.sp, color = FinalEarthPale.copy(alpha=0.7f))
+            }
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text("NEXT NUDGE", fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalEarthLight.copy(alpha=0.7f), letterSpacing = 0.5.sp)
+            Text("in ${dashState.nextNudgeMins} min", fontSize = 19.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalEarthLight)
+        }
     }
 }
 
 @Composable
 fun HomeNudgeCmp(dashState: com.example.neckguard.ui.DashboardState) {
-    Column(modifier = Modifier.fillMaxWidth().background(FinalCoral, shape = RoundedCornerShape(14.dp)).padding(16.dp)) {
-        Row(verticalAlignment = Alignment.Top) { Text("📱", fontSize = 22.sp); Spacer(modifier = Modifier.width(10.dp)); Column { Text("TODAY'S NUDGE", fontSize = 9.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalWhite.copy(alpha=0.55f), letterSpacing=0.1.sp); Spacer(modifier = Modifier.height(3.dp)); Text(dashState.todayNudge.instruction, fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalWhite, lineHeight = 18.sp) } }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { dashState.todayNudge.tags.forEach { tag -> Box(modifier = Modifier.background(FinalWhite.copy(alpha=0.18f), shape = RoundedCornerShape(20.dp)).padding(horizontal = 8.dp, vertical = 3.dp)) { Text(tag, fontSize = 9.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalWhite) } } }
-        Spacer(modifier = Modifier.height(8.dp))
-        Column(modifier = Modifier.fillMaxWidth().background(Color.Black.copy(alpha=0.1f), shape = RoundedCornerShape(10.dp)).padding(10.dp)) { Text("WHY THIS WORKS", fontSize = 8.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalWhite.copy(alpha=0.5f), letterSpacing = 0.1.sp); Spacer(modifier = Modifier.height(2.dp)); Text(dashState.todayNudge.reasoning, fontSize = 10.sp, color = FinalWhite.copy(alpha=0.8f), fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, lineHeight = 14.sp) }
+    Column(modifier = Modifier.fillMaxWidth().background(FinalCoral, RoundedCornerShape(16.dp)).padding(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(modifier = Modifier.size(30.dp).background(FinalWhite.copy(alpha=0.2f), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                Text("💡", fontSize = 16.sp)
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Column {
+                Text("TODAY'S NUDGE", fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalWhite.copy(alpha=0.8f), letterSpacing = 0.5.sp)
+                Text("Fact", fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalWhite)
+            }
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        Text("\"${dashState.todayNudge.instruction}\"", fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, color = FinalWhite, lineHeight = 24.sp)
+        Spacer(modifier = Modifier.height(10.dp))
+        Column(modifier = Modifier.fillMaxWidth().background(Color.Black.copy(alpha=0.15f), RoundedCornerShape(10.dp)).padding(11.dp)) {
+            Text("WHY THIS WORKS", fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalWhite.copy(alpha=0.7f), letterSpacing = 0.5.sp)
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(dashState.todayNudge.reasoning, fontSize = 14.sp, color = FinalWhite.copy(alpha=0.9f), fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, lineHeight = 20.sp)
+        }
     }
 }
 
 @Composable
-fun HomeSectionDivider(title: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) { Box(modifier = Modifier.weight(1f).height(1.dp).background(FinalMist)); Spacer(modifier = Modifier.width(10.dp)); Text(title, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, letterSpacing = 0.1.sp, color = FinalMuted); Spacer(modifier = Modifier.width(10.dp)); Box(modifier = Modifier.weight(1f).height(1.dp).background(FinalMist)) }
-}
+fun HomeExercisesCmp(dashState: com.example.neckguard.ui.DashboardState, exercisesState: com.example.neckguard.ui.ExercisesState, viewModel: MainViewModel, onNavigateToExercises: (String?) -> Unit) {
+    Column {
+        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("TODAY'S EXERCISES", fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalMuted, letterSpacing = 0.8.sp)
+            Text("See all →", fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalSage, modifier = Modifier.clickable { onNavigateToExercises(null) })
+        }
+        Column(modifier = Modifier.fillMaxWidth().background(FinalWhite, RoundedCornerShape(16.dp)).border(1.dp, FinalMist, RoundedCornerShape(16.dp))) {
+            Row(modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 13.dp, bottom = 6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Suggested exercises", fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalBark)
+                Text("${dashState.completedExercisesCount} / ${dashState.activeExercisesCount} done", fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, color = FinalMuted)
+            }
+            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp).padding(bottom = 10.dp).height(3.dp).background(FinalMist, RoundedCornerShape(2.dp))) {
+                val progress = if (dashState.activeExercisesCount > 0) dashState.completedExercisesCount.toFloat() / dashState.activeExercisesCount else 0f
+                val animatedProgress by androidx.compose.animation.core.animateFloatAsState(targetValue = progress, animationSpec = androidx.compose.animation.core.tween(400))
+                Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(animatedProgress).background(FinalMoss, RoundedCornerShape(2.dp)))
+            }
 
-@Composable
-fun HomeExercisesCmp(dashState: com.example.neckguard.ui.DashboardState, exercisesState: com.example.neckguard.ui.ExercisesState, onNavigateToExercises: (String?) -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth().background(FinalWhite, shape = RoundedCornerShape(14.dp)).border(1.dp, FinalMist, RoundedCornerShape(14.dp)).padding(16.dp)) {
-        Row(modifier = Modifier.fillMaxWidth().clickable(
-            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-            indication = null
-        ) { onNavigateToExercises(null) }, horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Column { Text("Your assigned routine", fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalBark); Spacer(modifier = Modifier.height(2.dp)); Text("Based on today's scan • ${dashState.completedExercisesCount}/${dashState.activeExercisesCount} completed", fontSize = 10.sp, color = FinalMuted) }; Text("See all →", fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalSage) }
-        Spacer(modifier = Modifier.height(10.dp))
-        dashState.assignedExercises.forEach { exerciseName ->
-            val isDone = exercisesState.doneIds.contains(exerciseName)
-            val cat = com.example.neckguard.ui.ExerciseData.exercises.firstOrNull { it.title == exerciseName }?.category ?: ""
-            Row(modifier = Modifier.fillMaxWidth().padding(bottom = 7.dp).clip(RoundedCornerShape(10.dp)).background(FinalMist).clickable { onNavigateToExercises(exerciseName) }.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(9.dp).background(if (isDone) FinalSage else FinalSageLight, CircleShape)); Spacer(modifier = Modifier.width(10.dp)); Text(exerciseName, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = if (isDone) FinalMuted else FinalBark, textDecoration = if (isDone) androidx.compose.ui.text.style.TextDecoration.LineThrough else null, modifier = Modifier.weight(1f)); Spacer(modifier = Modifier.width(10.dp)); Text(cat, fontSize = 9.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, color = FinalMuted); Spacer(modifier = Modifier.width(4.dp)); Text(if (isDone) "✓" else "→", fontSize = 11.sp, color = if (isDone) FinalSage else FinalMuted)
+            dashState.assignedExercises.forEachIndexed { index, exerciseName ->
+                val isDone = exercisesState.doneIds.contains(exerciseName)
+                val cat = com.example.neckguard.ui.ExerciseData.exercises.firstOrNull { it.title == exerciseName }?.category ?: "Tag"
+                Row(modifier = Modifier.fillMaxWidth().clickable { onNavigateToExercises(exerciseName) }.padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(24.dp).background(if (isDone) FinalMoss else FinalMist, CircleShape).border(1.5.dp, if (isDone) FinalMoss else FinalMuted.copy(alpha=0.3f), CircleShape).clickable { viewModel.toggleExerciseDone(exerciseName) }, contentAlignment = Alignment.Center) {
+                        if (isDone) Icon(Icons.Default.Check, contentDescription = null, tint = FinalWhite, modifier = Modifier.size(13.dp))
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(exerciseName, fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = if (isDone) FinalMuted else FinalBark, textDecoration = if (isDone) androidx.compose.ui.text.style.TextDecoration.LineThrough else null, modifier = Modifier.weight(1f))
+                    Box(modifier = Modifier.background(FinalEarthPale, RoundedCornerShape(8.dp)).padding(horizontal = 9.dp, vertical = 3.dp)) {
+                        Text(cat, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, color = FinalBarkSoft)
+                    }
+                }
+                if (index < dashState.assignedExercises.lastIndex) {
+                    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(FinalMist))
+                }
             }
         }
     }
@@ -593,17 +837,17 @@ fun RewardsTab(viewModel: MainViewModel, onSettingsClick: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
 
     Column(modifier = Modifier.fillMaxSize().background(FinalCream)) {
-        Box(modifier = Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Brush.linearGradient(colors = listOf(FinalSage, FinalSageLight))).padding(top = 52.dp, start = 22.dp, end = 22.dp, bottom = 24.dp)) {
+        Box(modifier = Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Brush.linearGradient(colors = listOf(FinalSage, FinalSageLight))).statusBarsPadding().padding(top = 16.dp, start = 22.dp, end = 22.dp, bottom = 24.dp)) {
             Column {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Box(modifier = Modifier.background(FinalMoss, RoundedCornerShape(20.dp)).padding(horizontal = 14.dp, vertical = 6.dp)) { Text("NudgeUp ↑", color = FinalCream, fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }; Box(modifier = Modifier.size(36.dp).background(FinalEarthPale, CircleShape).border(2.dp, FinalEarthPale, CircleShape).clip(CircleShape).clickable { onSettingsClick() }, contentAlignment = Alignment.Center) { Text("⚙", fontSize = 15.sp) } }
-                Spacer(modifier = Modifier.height(10.dp)); Text("PROGRESS & REWARDS", fontSize = 12.sp, color = FinalWhite.copy(alpha=0.55f), letterSpacing = 0.07.sp); Spacer(modifier = Modifier.height(14.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { NudgeUpBrandPill(); SettingsIconButton(onClick = onSettingsClick) }
+                Spacer(modifier = Modifier.height(10.dp)); Text("PROGRESS & REWARDS", fontSize = 14.sp, color = FinalWhite.copy(alpha=0.55f), letterSpacing = 0.07.sp); Spacer(modifier = Modifier.height(14.dp))
                 val scoreTitle = when {
                     dashState.postureScore > 80 -> "Superb posture 🌟"
                     dashState.postureScore > 60 -> "Good posture 👍"
                     dashState.postureScore > 0  -> "Needs work ⚠️"
                     else -> "No data yet"
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) { Text("${dashState.postureScore}", fontSize = 56.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalWhite); Spacer(modifier = Modifier.width(16.dp)); Column { Text("TODAY'S SCORE", fontSize = 10.sp, color = FinalWhite.copy(alpha=0.6f), letterSpacing = 0.07.sp); Text(scoreTitle, fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalWhite); Text(if(dashState.scoreDelta >= 0) "↑ +${dashState.scoreDelta} vs yesterday" else "↓ ${dashState.scoreDelta} vs yesterday", fontSize = 11.sp, color = FinalWhite.copy(alpha=0.6f)) } }
+                Row(verticalAlignment = Alignment.CenterVertically) { Text("${dashState.postureScore}", fontSize = 56.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalWhite); Spacer(modifier = Modifier.width(16.dp)); Column { Text("TODAY'S SCORE", fontSize = 13.sp, color = FinalWhite.copy(alpha=0.6f), letterSpacing = 0.07.sp); Text(scoreTitle, fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalWhite); Text(if(dashState.scoreDelta >= 0) "↑ +${dashState.scoreDelta} vs yesterday" else "↓ ${dashState.scoreDelta} vs yesterday", fontSize = 13.sp, color = FinalWhite.copy(alpha=0.6f)) } }
             }
         }
         
@@ -621,22 +865,49 @@ fun RewardsTab(viewModel: MainViewModel, onSettingsClick: () -> Unit) {
                 val iconBg = when(key) { "week" -> FinalSagePale; "lb" -> FinalEarthLight; "friends" -> Color(0xFFDCF0F7); else -> FinalEarthPale }
                 
                 Column(modifier = Modifier.fillMaxWidth().background(FinalWhite, RoundedCornerShape(16.dp)).border(1.dp, FinalMist, RoundedCornerShape(16.dp))) {
-                    Row(modifier = Modifier.fillMaxWidth().clickable { viewModel.setRewardsSection(key) }.padding(14.dp, 16.dp), verticalAlignment = Alignment.CenterVertically) { Box(modifier = Modifier.size(36.dp).background(iconBg, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) { Text(icon, fontSize = 17.sp) }; Spacer(modifier = Modifier.width(10.dp)); Column(modifier = Modifier.weight(1f)) { Text(title, fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalBark); if (sub.isNotEmpty()) Text(sub, fontSize = 10.sp, color = FinalMuted) }; Text(if(isExpanded) "▲" else "▼", fontSize = 11.sp, color = FinalMuted) }
+                    Row(modifier = Modifier.fillMaxWidth().clickable { viewModel.setRewardsSection(key) }.padding(14.dp, 16.dp), verticalAlignment = Alignment.CenterVertically) { Box(modifier = Modifier.size(36.dp).background(iconBg, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) { Text(icon, fontSize = 17.sp) }; Spacer(modifier = Modifier.width(10.dp)); Column(modifier = Modifier.weight(1f)) { Text(title, fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalBark); if (sub.isNotEmpty()) Text(sub, fontSize = 13.sp, color = FinalMuted) }; Text(if(isExpanded) "▲" else "▼", fontSize = 13.sp, color = FinalMuted) }
                     if (isExpanded) {
                         Box(modifier = Modifier.fillMaxWidth().padding(horizontal=16.dp).height(1.dp).background(FinalMist))
                         Column(modifier = Modifier.padding(16.dp)) {
                             if (key == "week") {
-                                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                    state.weekLog.forEach { item2 -> val day = item2.first; val stat = item2.second; Column(horizontalAlignment = Alignment.CenterHorizontally) { Box(modifier = Modifier.size(32.dp).border(2.5.dp, if(stat=="✓" || stat=="F") FinalSage else if (stat=="!") FinalEarth else Color(0xFFE0E0D8), CircleShape).background(if(stat=="✓") FinalSagePale else if(stat=="F") FinalSage else if(stat=="!") FinalEarthPale else Color.Transparent, CircleShape), contentAlignment = Alignment.Center) { Text(if(stat=="✓") "✓" else if(stat=="!") "!" else if(stat=="F") day else day, fontSize = 9.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = if(stat=="✓"||stat=="F") FinalMoss else if(stat=="!") FinalEarth else Color.LightGray) }; Spacer(modifier = Modifier.height(3.dp)); Text(day, fontSize=9.sp, color=FinalMuted) } }
+                                // Find max total time for scaling (min 1 hour to prevent huge bars for 5 mins of data)
+                                val maxTimeMs = maxOf(state.weekLogStats.maxOfOrNull { it.totalMs } ?: 0L, 3600000L)
+                                
+                                Row(horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom, modifier = Modifier.fillMaxWidth().height(140.dp).padding(horizontal = 4.dp)) {
+                                    state.weekLogStats.forEach { stat ->
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom, modifier = Modifier.fillMaxHeight()) {
+                                            if (stat.hasData && stat.totalMs > 0) {
+                                                val totalPct = (stat.totalMs.toFloat() / maxTimeMs).coerceIn(0f, 1f)
+                                                val healthyPct = ((stat.totalMs - stat.slouchedMs).toFloat() / stat.totalMs).coerceIn(0f, 1f)
+                                                val slouchedPct = 1f - healthyPct
+                                                
+                                                val barHeight = 100.dp * totalPct
+                                                
+                                                Column(modifier = Modifier.width(16.dp).height(barHeight).clip(RoundedCornerShape(8.dp))) {
+                                                    // Top part is red (slouched)
+                                                    Box(modifier = Modifier.fillMaxWidth().weight(if (slouchedPct > 0) slouchedPct else 0.001f).background(FinalCoral))
+                                                    // Bottom part is green (healthy)
+                                                    Box(modifier = Modifier.fillMaxWidth().weight(if (healthyPct > 0) healthyPct else 0.001f).background(FinalMoss))
+                                                }
+                                            } else {
+                                                // Empty state for day
+                                                Box(modifier = Modifier.width(16.dp).height(100.dp), contentAlignment = Alignment.BottomCenter) {
+                                                    Box(modifier = Modifier.size(6.dp).background(FinalMist, CircleShape))
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(stat.dayLabel, fontSize = 12.sp, color = if(stat.hasData) FinalBark else FinalMuted, fontWeight = if(stat.hasData) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal)
+                                        }
+                                    }
                                 }
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { Column(modifier = Modifier.weight(1f).background(FinalMist, RoundedCornerShape(12.dp)).padding(12.dp)) { Text(String.format("%.1f", state.timeTrackedHours) + "h", fontSize=22.sp, fontWeight=androidx.compose.ui.text.font.FontWeight.Bold, color=FinalBark); Text("Time tracked", fontSize=10.sp, color=FinalMuted) }; Column(modifier = Modifier.weight(1f).background(FinalMist, RoundedCornerShape(12.dp)).padding(12.dp)) { Text("${state.exercisesDoneTotal}/${state.totalRequiredExercises}", fontSize=22.sp, fontWeight=androidx.compose.ui.text.font.FontWeight.Bold, color=FinalBark); Text("Exercises done", fontSize=10.sp, color=FinalMuted) } }
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { Column(modifier = Modifier.weight(1f).background(FinalMist, RoundedCornerShape(12.dp)).padding(12.dp)) { Text(String.format("%.1f", state.timeTrackedHours) + "h", fontSize=22.sp, fontWeight=androidx.compose.ui.text.font.FontWeight.Bold, color=FinalBark); Text("Time tracked", fontSize = 13.sp, color=FinalMuted) }; Column(modifier = Modifier.weight(1f).background(FinalMist, RoundedCornerShape(12.dp)).padding(12.dp)) { Text("${state.exercisesDoneTotal}/${state.totalRequiredExercises}", fontSize=22.sp, fontWeight=androidx.compose.ui.text.font.FontWeight.Bold, color=FinalBark); Text("Exercises done", fontSize = 13.sp, color=FinalMuted) } }
                             } else if (key == "rewards") {
-                                Row(modifier = Modifier.fillMaxWidth().background(FinalBark, RoundedCornerShape(14.dp)).padding(14.dp, 16.dp), verticalAlignment = Alignment.CenterVertically) { Column(modifier = Modifier.weight(1f)) { Text("${state.points} pts", fontSize=30.sp, fontWeight=androidx.compose.ui.text.font.FontWeight.Bold, color=FinalEarthLight); Text("EARNED THIS WEEK", fontSize=10.sp, color=FinalWhite.copy(alpha=0.4f), letterSpacing=0.06.sp) }; androidx.compose.material3.Button(onClick={ android.widget.Toast.makeText(context, "Giftcard store coming soon!", android.widget.Toast.LENGTH_SHORT).show() }, colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = FinalSage), shape = RoundedCornerShape(10.dp)) { Text("Redeem →", fontSize=12.sp, fontWeight=androidx.compose.ui.text.font.FontWeight.Bold) } }
-                                Spacer(modifier = Modifier.height(14.dp)); Text("YOUR TITLES", fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalMuted, letterSpacing = 0.08.sp); Spacer(modifier = Modifier.height(8.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) { Box(modifier = Modifier.background(FinalSage, RoundedCornerShape(20.dp)).padding(horizontal=13.dp, vertical=6.dp)) { Text("Neck Newbie", fontSize=11.sp, fontWeight=androidx.compose.ui.text.font.FontWeight.SemiBold, color=FinalWhite) }; Box(modifier = Modifier.background(FinalSage, RoundedCornerShape(20.dp)).padding(horizontal=13.dp, vertical=6.dp)) { Text("Posture Pro", fontSize=11.sp, fontWeight=androidx.compose.ui.text.font.FontWeight.SemiBold, color=FinalWhite) }; Box(modifier = Modifier.background(FinalMist, RoundedCornerShape(20.dp)).padding(horizontal=13.dp, vertical=6.dp)) { Text("Spine Savant", fontSize=11.sp, fontWeight=androidx.compose.ui.text.font.FontWeight.SemiBold, color=Color(0xFFBBBBBB)) } }
+                                Row(modifier = Modifier.fillMaxWidth().background(FinalBark, RoundedCornerShape(14.dp)).padding(14.dp, 16.dp), verticalAlignment = Alignment.CenterVertically) { Column(modifier = Modifier.weight(1f)) { Text("${state.points} pts", fontSize=30.sp, fontWeight=androidx.compose.ui.text.font.FontWeight.Bold, color=FinalEarthLight); Text("EARNED THIS WEEK", fontSize = 13.sp, color=FinalWhite.copy(alpha=0.4f), letterSpacing=0.06.sp) }; androidx.compose.material3.Button(onClick={ android.widget.Toast.makeText(context, "Giftcard store coming soon!", android.widget.Toast.LENGTH_SHORT).show() }, colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = FinalSage), shape = RoundedCornerShape(10.dp)) { Text("Redeem →", fontSize = 14.sp, fontWeight=androidx.compose.ui.text.font.FontWeight.Bold) } }
+                                Spacer(modifier = Modifier.height(14.dp)); Text("YOUR TITLES", fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = FinalMuted, letterSpacing = 0.08.sp); Spacer(modifier = Modifier.height(8.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) { Box(modifier = Modifier.background(FinalSage, RoundedCornerShape(20.dp)).padding(horizontal=13.dp, vertical=6.dp)) { Text("Neck Newbie", fontSize = 13.sp, fontWeight=androidx.compose.ui.text.font.FontWeight.SemiBold, color=FinalWhite) }; Box(modifier = Modifier.background(FinalSage, RoundedCornerShape(20.dp)).padding(horizontal=13.dp, vertical=6.dp)) { Text("Posture Pro", fontSize = 13.sp, fontWeight=androidx.compose.ui.text.font.FontWeight.SemiBold, color=FinalWhite) }; Box(modifier = Modifier.background(FinalMist, RoundedCornerShape(20.dp)).padding(horizontal=13.dp, vertical=6.dp)) { Text("Spine Savant", fontSize = 13.sp, fontWeight=androidx.compose.ui.text.font.FontWeight.SemiBold, color=Color(0xFFBBBBBB)) } }
                             } else {
-                                Text("Feature coming soon...", fontSize = 12.sp, color = FinalMuted, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+                                Text("Feature coming soon...", fontSize = 14.sp, color = FinalMuted, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
                             }
                         }
                     }
@@ -649,11 +920,12 @@ fun RewardsTab(viewModel: MainViewModel, onSettingsClick: () -> Unit) {
 @Composable
 fun SettingsComponent(
     selectedInterval: Long, onIntervalChange: (Long) -> Unit,
-    hasCameraPerm: Boolean, hasNotifPerm: Boolean, hasActivityPerm: Boolean,
+    hasCameraPerm: Boolean, hasNotifPerm: Boolean,
     onFixPerm: (String) -> Unit, onLogout: () -> Unit,
     telemetryEnabled: Boolean, onTelemetryChange: (Boolean) -> Unit,
     onOpenNotificationSettings: () -> Unit,
     onShowPrivacyPolicy: () -> Unit = {},
+    onShowAbout: () -> Unit = {},
     onDeleteAccount: () -> Unit = {},
     isDeletingAccount: Boolean = false,
     deleteAccountError: String? = null,
@@ -688,7 +960,7 @@ fun SettingsComponent(
                     Spacer(modifier = Modifier.height(2.dp))
                     androidx.compose.material3.Text(
                         "Your data is being stored without device encryption right now. We'll retry secure storage on the next app launch. If this keeps happening, try restarting your phone.",
-                        fontSize = 11.sp,
+                        fontSize = 13.sp,
                         color = FinalBark,
                         lineHeight = 15.sp
                     )
@@ -700,9 +972,14 @@ fun SettingsComponent(
         
         Column(modifier = Modifier.fillMaxWidth().background(FinalWhite, RoundedCornerShape(14.dp)).border(1.dp, FinalMist, RoundedCornerShape(14.dp)).padding(16.dp)) {
             androidx.compose.material3.Text("Check Interval", fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalBark)
-            androidx.compose.material3.Text("Sets how long you must be reading before posture is evaluated.", fontSize = 12.sp, color = FinalMuted)
+            androidx.compose.material3.Text("Sets how long you must be reading before posture is evaluated.", fontSize = 14.sp, color = FinalMuted)
             Spacer(modifier = Modifier.height(12.dp))
-            val options = listOf(15_000L to "15 Seconds (Testing)", 15 * 60 * 1000L to "15 Minutes", 30 * 60 * 1000L to "30 Minutes")
+            // Shared presets (BUG-07) rendered with terse "N Minutes" labels. The 15-second
+            // testing option only exists in debug builds (BUG-04) so real users never see it.
+            val options = buildList {
+                if (BuildConfig.DEBUG) add(15_000L to "15 Seconds (Testing)")
+                IntervalOptions.presets.forEach { (ms, _) -> add(ms to "${ms / 60000} Minutes") }
+            }
             options.forEach { (ms, label) ->
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -774,7 +1051,7 @@ fun SettingsComponent(
                     val textLabel = if (currentMins > 0) "$currentMins minutes" else "$currentSecs seconds"
                     androidx.compose.material3.Text(
                         "Currently set to $textLabel",
-                        fontSize = 12.sp,
+                        fontSize = 14.sp,
                         color = FinalMoss,
                         modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp)
                     )
@@ -808,8 +1085,7 @@ fun SettingsComponent(
                 Spacer(modifier = Modifier.height(8.dp))
             }
             if (!hasCameraPerm) { Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { androidx.compose.material3.Text("Camera Sensor", color = FinalBark); androidx.compose.material3.Button(onClick = { onFixPerm(android.Manifest.permission.CAMERA) }, colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = FinalMoss)) { androidx.compose.material3.Text("Fix") } }; Spacer(modifier = Modifier.height(8.dp)) }
-            if (!hasActivityPerm) { Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { androidx.compose.material3.Text("Activity Sensor", color = FinalBark); androidx.compose.material3.Button(onClick = { if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) onFixPerm(android.Manifest.permission.ACTIVITY_RECOGNITION) }, colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = FinalMoss)) { androidx.compose.material3.Text("Fix") } }; Spacer(modifier = Modifier.height(8.dp)) }
-            if (hasCameraPerm && hasNotifPerm && hasActivityPerm) { androidx.compose.material3.Text("All systems nominal. Ready to protect your neck!", fontSize = 12.sp, color = FinalMoss) }
+            if (hasCameraPerm && hasNotifPerm) { androidx.compose.material3.Text("All systems nominal. Ready to protect your neck!", fontSize = 14.sp, color = FinalMoss) }
         }
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -829,7 +1105,7 @@ fun SettingsComponent(
                     Spacer(modifier = Modifier.height(2.dp))
                     androidx.compose.material3.Text(
                         "Lets us see crashes and aggregated usage so we can fix bugs. We never log your name, email, or photos.",
-                        fontSize = 12.sp,
+                        fontSize = 14.sp,
                         color = FinalMuted,
                         lineHeight = 16.sp
                     )
@@ -867,7 +1143,7 @@ fun SettingsComponent(
                     Spacer(modifier = Modifier.height(4.dp))
                     androidx.compose.material3.Text(
                         "NudgeUp is a wellness tool, not a medical device. It does not diagnose, treat, cure, or prevent any disease. Consult a healthcare professional for medical advice.",
-                        fontSize = 11.sp,
+                        fontSize = 13.sp,
                         color = FinalBarkSoft,
                         lineHeight = 16.sp
                     )
@@ -877,8 +1153,21 @@ fun SettingsComponent(
         Spacer(modifier = Modifier.height(16.dp))
 
         Column(modifier = Modifier.fillMaxWidth().background(FinalWhite, RoundedCornerShape(14.dp)).border(1.dp, FinalMist, RoundedCornerShape(14.dp)).padding(16.dp)) {
-            androidx.compose.material3.Text("Legal", fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalBark)
+            androidx.compose.material3.Text("Legal & About", fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = FinalBark)
             Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onShowAbout() }
+                    .padding(vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                androidx.compose.material3.Text("About NudgeUp", fontSize = 14.sp, color = FinalBark)
+                androidx.compose.material3.Text("→", fontSize = 14.sp, color = FinalMuted)
+            }
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(FinalMist))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -909,7 +1198,7 @@ fun SettingsComponent(
             if (deleteAccountError != null) {
                 androidx.compose.material3.Text(
                     deleteAccountError,
-                    fontSize = 12.sp,
+                    fontSize = 14.sp,
                     color = FinalCoral,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )

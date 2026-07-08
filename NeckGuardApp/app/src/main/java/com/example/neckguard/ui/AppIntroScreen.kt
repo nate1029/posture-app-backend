@@ -30,12 +30,12 @@ fun AppIntroScreen(onFinish: () -> Unit) {
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(modifier = Modifier.height(48.dp))
+        Spacer(modifier = Modifier.statusBarsPadding())
 
         if (step == 0) {
             Text(
                 "Hey!\nI'm your posture\nbuddy \uD83D\uDC4B",
-                fontSize = 28.sp,
+                fontSize = 33.sp,
                 fontWeight = FontWeight.Bold,
                 color = FinalBark,
                 textAlign = TextAlign.Center,
@@ -49,10 +49,10 @@ fun AppIntroScreen(onFinish: () -> Unit) {
                     .fillMaxWidth()
                     .height(300.dp)
             )
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(24.dp))
             Text(
                 "I'll help you fix your phone\nposture, reduce pain, and build\nhealthy habits—without stress.",
-                fontSize = 15.sp,
+                fontSize = 19.sp,
                 color = FinalBarkSoft,
                 textAlign = TextAlign.Center,
                 lineHeight = 22.sp
@@ -60,7 +60,7 @@ fun AppIntroScreen(onFinish: () -> Unit) {
         } else {
             Text(
                 "What is\nText Neck?",
-                fontSize = 28.sp,
+                fontSize = 33.sp,
                 fontWeight = FontWeight.Bold,
                 color = FinalMoss,
                 textAlign = TextAlign.Center,
@@ -69,7 +69,7 @@ fun AppIntroScreen(onFinish: () -> Unit) {
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 "Looking down at your phone\nfor too long can cause stress\non your neck and spine.",
-                fontSize = 15.sp,
+                fontSize = 19.sp,
                 color = FinalBarkSoft,
                 textAlign = TextAlign.Center,
                 lineHeight = 22.sp
@@ -82,7 +82,7 @@ fun AppIntroScreen(onFinish: () -> Unit) {
                     .fillMaxWidth()
                     .height(250.dp)
             )
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(24.dp))
             
             // Symptoms List
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -112,7 +112,7 @@ fun AppIntroScreen(onFinish: () -> Unit) {
             colors = ButtonDefaults.buttonColors(containerColor = FinalMoss),
             shape = RoundedCornerShape(16.dp)
         ) {
-            Text(if (step == 0) "Next" else "Got it", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = FinalWhite)
+            Text(if (step == 0) "Next" else "Got it", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = FinalWhite)
         }
         Spacer(modifier = Modifier.height(16.dp))
     }
@@ -125,9 +125,9 @@ fun SymptomRow(icon: String, text: String) {
             modifier = Modifier.size(40.dp).border(1.dp, FinalMist, androidx.compose.foundation.shape.CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Text(icon, fontSize = 20.sp)
+            Text(icon, fontSize = 24.sp)
         }
         Spacer(modifier = Modifier.width(16.dp))
-        Text(text, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = FinalBark)
+        Text(text, fontSize = 19.sp, fontWeight = FontWeight.Medium, color = FinalBark)
     }
 }

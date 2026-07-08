@@ -54,14 +54,22 @@ data class DashboardState(
     val isAppActive: Boolean = false,
     val activeExercisesCount: Int = 3,
     val completedExercisesCount: Int = 0,
+    val nudgesToday: Int = 0,
     val highScreenDistancePct: Int = 68,
     val assignedExercises: List<String> = emptyList(),
     val todayNudge: NudgeData = NudgeData("Raise your phone to eye level right now", listOf("🟢 Easy", "⏱ 5 seconds", "No eqpt"), "Every 10° of forward head tilt adds ~10 lbs of load on your cervical spine."),
-    val detectedToday: DetectionData = DetectionData("High screen distance detected", "Your phone closer than 30cm for 24%.", "Eye strain • Moderate severity")
+    val detectedToday: DetectionData = DetectionData("High screen distance detected", "Your phone closer than 30cm for 24%.", "Eye strain • Moderate severity"),
+    val totalMonitoredMs: Long = 0L,
+    val healthyMs: Long = 0L,
+    val slouchedMs: Long = 0L,
+    val checksToday: Int = 0,
+    val badChecksToday: Int = 0
 )
 
 data class NudgeData(val instruction: String, val tags: List<String>, val reasoning: String)
 data class DetectionData(val title: String, val subtitle: String, val severityTag: String)
+
+data class DailyPostureStat(val dayLabel: String, val totalMs: Long, val slouchedMs: Long, val hasData: Boolean)
 
 data class RewardsState(
     val expandedSection: String = "week",
@@ -69,7 +77,8 @@ data class RewardsState(
     val exercisesDoneTotal: Int = 0,
     val totalRequiredExercises: Int = 21,
     val points: Int = 0,
-    val weekLog: List<Pair<String, String>> = listOf("S" to "", "M" to "", "T" to "", "W" to "", "T" to "", "F" to "", "S" to "")
+    val weekLog: List<Pair<String, String>> = listOf("S" to "", "M" to "", "T" to "", "W" to "", "T" to "", "F" to "", "S" to ""),
+    val weekLogStats: List<DailyPostureStat> = emptyList()
 )
 
 data class ExercisesState(
@@ -92,12 +101,6 @@ class MainViewModel(
 
     init {
         checkStatus()
-        
-        // As requested: randomize the 3 exercises every time the app opens
-        val newRandom = com.example.neckguard.ui.ExerciseData.exercises.shuffled().take(3).map { it.title }
-        repository.setAssignedExercisesList(newRandom)
-        repository.setCompletedExercisesTodayList(emptySet())
-        
         startGamificationAndPostureEngine()
     }
 
@@ -159,17 +162,15 @@ class MainViewModel(
             }
         }
 
-        // ── Streak & Week Log ────────────────────────────────────────────
+        // ── Week Log ────────────────────────────────────────────
         launch {
             postureLogDao.getAllLogs().asFlow().collect { logs ->
                 val weekLog = buildWeekLog(logs)
-                val streak = computeStreak(logs)
+                val weekLogStats = buildWeekLogStats(logs)
 
-                dashboardState.value = dashboardState.value.copy(
-                    streakDays = streak
-                )
                 rewardsState.value = rewardsState.value.copy(
-                    weekLog = weekLog
+                    weekLog = weekLog,
+                    weekLogStats = weekLogStats
                 )
             }
         }
@@ -204,29 +205,31 @@ class MainViewModel(
         val (yStart, yEnd) = dayBoundsMillis(-1)
         val yesterdayTotal = postureLogDao.getCumulativeUsageBetween(yStart, yEnd) ?: 0L
         val yesterdaySlouched = postureLogDao.getCumulativeSlouchedBetween(yStart, yEnd) ?: 0L
-        val manualTotal = repository.manualChecksTotalToday
-        val manualBad = repository.manualChecksBadToday
-
-        var timeRatio = if (yesterdayTotal > 0) (yesterdayTotal - yesterdaySlouched).toDouble() / yesterdayTotal else -1.0
-        var manualRatio = if (manualTotal > 0) (manualTotal - manualBad).toDouble() / manualTotal else -1.0
-
-        val finalRatio = if (timeRatio >= 0 && manualRatio >= 0) {
-            (timeRatio * 0.7) + (manualRatio * 0.3)
-        } else if (timeRatio >= 0) {
-            timeRatio
-        } else if (manualRatio >= 0) {
-            manualRatio
-        } else {
-            -1.0
-        }
-
-        val yesterdayScore = if (finalRatio >= 0) {
-            val curvedScore = (57.0 * finalRatio * finalRatio) + (33.0 * finalRatio) + 10.0
-            curvedScore.toInt().coerceIn(0, 100)
+        
+        val yesterdayScore = if (yesterdayTotal > 0 || repository.completedExercisesTodayList.isNotEmpty()) {
+            val timeRatio = if (yesterdayTotal > 0) (yesterdayTotal - yesterdaySlouched).toDouble() / yesterdayTotal else 0.0
+            val passivePoints = timeRatio * 30.0
+            val exercisePoints = (repository.completedExercisesTodayList.size / 3.0).coerceAtMost(1.0) * 30.0
+            val nudgePoints = if (yesterdayTotal > 0) (40.0 - (repository.nudgesFiredToday * 8.0)).coerceAtLeast(0.0) else 0.0
+            
+            (passivePoints + exercisePoints + nudgePoints).toInt().coerceIn(0, 100)
         } else {
             UserRepository.NO_YESTERDAY_DATA
         }
         repository.setYesterdayScore(yesterdayScore)
+
+        // ── Streak tracking ─────────────────────────────────────────
+        // A "streak day" = user had at least one posture session yesterday.
+        // If they used the app yesterday, increment the streak; otherwise reset to 0.
+        // Today counts as day 1 of a new streak once the app is opened.
+        val hadExercisesYesterday = repository.completedExercisesTodayList.isNotEmpty()
+        val hadActivityYesterday = yesterdayTotal > 0 || hadExercisesYesterday
+        val newStreak = if (hadActivityYesterday) repository.currentStreak + 1 else 0
+        repository.setCurrentStreak(newStreak)
+        if (newStreak > repository.bestStreak) {
+            repository.setBestStreak(newStreak)
+        }
+
         repository.setCurrentDayOfYear(currentDay)
 
         val assigned = ExerciseData.exercises.shuffled().take(3).map { it.title }
@@ -234,6 +237,7 @@ class MainViewModel(
         repository.setCompletedExercisesTodayList(emptySet())
         repository.setManualChecksTotalToday(0)
         repository.setManualChecksBadToday(0)
+        repository.setNudgesFiredToday(0)
         return true
     }
 
@@ -250,7 +254,10 @@ class MainViewModel(
         dashboardState.value = dashboardState.value.copy(
             activeExercisesCount = if (assignedSet.isEmpty()) 3 else assignedSet.size,
             completedExercisesCount = completedTodaySet.size,
-            assignedExercises = if (assignedSet.isEmpty()) listOf("Chin Tuck", "Scapular Retractions", "Cervical Flexion") else assignedSet
+            assignedExercises = if (assignedSet.isEmpty()) listOf("Chin Tuck", "Scapular Retractions", "Cervical Flexion") else assignedSet,
+            streakDays = repository.currentStreak,
+            checksToday = repository.manualChecksTotalToday,
+            badChecksToday = repository.manualChecksBadToday
         )
         rewardsState.value = rewardsState.value.copy(
             points = repository.lifetimePoints,
@@ -262,27 +269,17 @@ class MainViewModel(
     }
 
     private fun handleTodayStatsTick(totalMs: Long, slouchedMs: Long) {
-        val manualTotal = repository.manualChecksTotalToday
-        val manualBad = repository.manualChecksBadToday
-
-        var timeRatio = if (totalMs > 0) (totalMs - slouchedMs).toDouble() / totalMs else -1.0
-        var manualRatio = if (manualTotal > 0) (manualTotal - manualBad).toDouble() / manualTotal else -1.0
-
-        val finalRatio = if (timeRatio >= 0 && manualRatio >= 0) {
-            (timeRatio * 0.7) + (manualRatio * 0.3)
-        } else if (timeRatio >= 0) {
-            timeRatio
-        } else if (manualRatio >= 0) {
-            manualRatio
+        val newScore = if (totalMs > 0) {
+            val timeRatio = (totalMs - slouchedMs).toDouble() / totalMs
+            val passivePoints = timeRatio * 30.0
+            val exercisePoints = (repository.completedExercisesTodayList.size / 3.0).coerceAtMost(1.0) * 30.0
+            val nudgePoints = (40.0 - (repository.nudgesFiredToday * 8.0)).coerceAtLeast(0.0)
+            
+            (passivePoints + exercisePoints + nudgePoints).toInt().coerceIn(0, 100)
         } else {
-            -1.0
-        }
-
-        val newScore = if (finalRatio >= 0) {
-            val curvedScore = (57.0 * finalRatio * finalRatio) + (33.0 * finalRatio) + 10.0
-            curvedScore.toInt().coerceIn(0, 100)
-        } else {
-            0
+            // If they haven't tracked posture today, they only get points for completed exercises
+            val exercisePoints = (repository.completedExercisesTodayList.size / 3.0).coerceAtMost(1.0) * 30.0
+            exercisePoints.toInt().coerceIn(0, 100)
         }
 
         // delta is only meaningful when we have *real* data for both today
@@ -324,7 +321,11 @@ class MainViewModel(
             postureScore = newScore,
             scoreDelta = delta,
             todayNudge = nudge,
-            detectedToday = detect
+            detectedToday = detect,
+            nudgesToday = repository.nudgesFiredToday,
+            totalMonitoredMs = totalMs,
+            healthyMs = totalMs - slouchedMs,
+            slouchedMs = slouchedMs
         )
         rewardsState.value = rewardsState.value.copy(
             timeTrackedHours = (totalMs / (1000f * 60f * 60f))
@@ -397,6 +398,26 @@ class MainViewModel(
          repository.addCompletedExerciseToday(id)
          val completedSet = repository.completedExercisesTodayList
 
+         // ── Smart Routine Swap ─────────────────────────────────────
+         // If the user completed an exercise that's NOT in their assigned
+         // routine (e.g., from a notification CTA or browsing), swap it
+         // into the routine in place of the first uncompleted assigned
+         // exercise. This makes the dashboard counter (e.g., "1/3 done")
+         // match reality, and the user sees their completed exercise
+         // with a visible checkmark in the assigned list.
+         val currentAssigned = repository.assignedExercisesList.toMutableList()
+         if (!currentAssigned.contains(id)) {
+             // Find the first assigned exercise that hasn't been completed today
+             val swapIndex = currentAssigned.indexOfFirst { !completedSet.contains(it) }
+             if (swapIndex >= 0) {
+                 val swappedOut = currentAssigned[swapIndex]
+                 currentAssigned[swapIndex] = id
+                 repository.setAssignedExercisesList(currentAssigned)
+                 android.util.Log.d("MainViewModel",
+                     "Routine swap: '$swappedOut' → '$id' at position $swapIndex")
+             }
+         }
+
          // Track in Firebase Analytics
          com.example.neckguard.NudgeAnalytics.logExerciseComplete(id, exercisesState.value.activeCategory)
          
@@ -406,8 +427,35 @@ class MainViewModel(
              exercisesDoneTotal = repository.totalExercisesDone
          )
          dashboardState.value = dashboardState.value.copy(
-             completedExercisesCount = completedSet.size
+             completedExercisesCount = completedSet.size,
+             assignedExercises = repository.assignedExercisesList
          )
+    }
+
+    fun toggleExerciseDone(id: String) {
+        val current = exercisesState.value
+        val isDone = current.doneIds.contains(id)
+        
+        if (isDone) {
+            exercisesState.value = current.copy(doneIds = current.doneIds - id)
+            repository.removeCompletedExerciseToday(id)
+            repository.addPoints(-RemoteConfigManager.pointsPerExercise)
+        } else {
+            exercisesState.value = current.copy(doneIds = current.doneIds + id)
+            repository.addCompletedExerciseToday(id)
+            repository.addPoints(RemoteConfigManager.pointsPerExercise)
+            repository.addExerciseDone()
+            com.example.neckguard.NudgeAnalytics.logExerciseComplete(id, current.activeCategory)
+        }
+        
+        val completedSet = repository.completedExercisesTodayList
+        rewardsState.value = rewardsState.value.copy(
+            points = repository.lifetimePoints,
+            exercisesDoneTotal = repository.totalExercisesDone
+        )
+        dashboardState.value = dashboardState.value.copy(
+            completedExercisesCount = completedSet.size
+        )
     }
 
     // --- AUTH ---
@@ -668,6 +716,23 @@ class MainViewModel(
     }
 
     /** Builds the 7-day display log oldest → newest for the rewards screen. */
+    private fun buildWeekLogStats(logs: List<com.example.neckguard.data.local.PostureLog>): List<DailyPostureStat> {
+        val dayLabels = listOf("S", "M", "T", "W", "T", "F", "S")
+        val out = mutableListOf<DailyPostureStat>()
+        for (daysAgo in 6 downTo 0) {
+            val (start, end) = dayBoundsMillis(-daysAgo)
+            val cal = java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_YEAR, -daysAgo) }
+            val label = dayLabels[cal.get(java.util.Calendar.DAY_OF_WEEK) - 1]
+            
+            val dayLogs = logs.filter { it.timestampStartMs in start..end }
+            val totalMs = dayLogs.sumOf { it.durationMs }
+            val slouchedMs = dayLogs.sumOf { it.slouchedMs }
+            
+            out.add(DailyPostureStat(label, totalMs, slouchedMs, dayLogs.isNotEmpty()))
+        }
+        return out
+    }
+
     private fun buildWeekLog(logs: List<com.example.neckguard.data.local.PostureLog>): List<Pair<String, String>> {
         val dayLabels = listOf("S", "M", "T", "W", "T", "F", "S")
         val out = mutableListOf<Pair<String, String>>()
@@ -690,20 +755,8 @@ class MainViewModel(
      * Streak = consecutive days, walking *backwards from today*, where the
      * user logged at least 2 posture sessions. Today counts.
      *
-     * The previous implementation walked oldest → newest, reset on any past
-     * gap, and explicitly excluded today (`if (i > 0) streak++`). Result:
-     * a perfect 7-day run displayed as `streak = 6`, and a gap on day -5
      * zeroed the count even if the last 4 days were perfect.
      */
-    private fun computeStreak(logs: List<com.example.neckguard.data.local.PostureLog>): Int {
-        var streak = 0
-        for (daysAgo in 0..6) {
-            val (start, end) = dayBoundsMillis(-daysAgo)
-            val sessionCount = logs.count { it.timestampStartMs in start..end }
-            if (sessionCount >= 2) streak++ else break
-        }
-        return streak
-    }
 }
 
 class MainViewModelFactory(

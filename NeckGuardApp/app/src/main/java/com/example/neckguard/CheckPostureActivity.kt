@@ -1,4 +1,4 @@
-package com.example.neckguard
+﻿package com.example.neckguard
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -100,7 +100,9 @@ class CheckPostureActivity : ComponentActivity() {
                 )
 
             } catch (exc: Exception) {
-                Log.e(TAG, "Use case binding failed", exc)
+                // Route through LogX so the REAL bind exception reaches Crashlytics
+                // on Play builds (raw Log.e only lands in logcat, invisible to us).
+                LogX.e(TAG, "Camera bind failed — falling back to sensors", exc)
                 if (hasResult.compareAndSet(false, true)) {
                     fireFallbackNotification("Camera hardware initialization failed.")
                     finish()
@@ -156,12 +158,23 @@ class CheckPostureActivity : ComponentActivity() {
                     finish()
                     return@addOnSuccessListener
                 }
+                // Use LIVE sensor pitch (not the stale value from when the
+                // notification was created, which may be minutes old).
+                val livePitch = com.example.neckguard.engine.PostureEngine.currentPitch
 
-                val phonePitch = intent.getFloatExtra("phone_pitch", 45f)
-                val trueNeckPitch = (phonePitch + facePitchExtracted) * 0.82f
+                // Apply the SAME baseline subtraction and scaling as PostureEngine
+                // so both systems agree on what "good" and "bad" mean.
+                val baselinePitch = 10f // Must match PostureEngine.BASELINE_PITCH
+                val sensorFlexion = ((livePitch - baselinePitch).coerceAtLeast(0f)) * 0.85f
+
+                // The face camera gives us real data the sensor doesn't have.
+                // Add 30% of the face pitch as a small refinement — enough to
+                // catch genuine looking-down posture, but not so much that it
+                // dominates and contradicts the sensor engine.
+                val trueNeckPitch = sensorFlexion + (facePitchExtracted * 0.3f)
 
                 if (com.example.neckguard.BuildConfig.DEBUG) {
-                    Log.d(TAG, "WebApp Logic Match -> Phone: $phonePitch° | Face: $facePitchExtracted° | True Flexion: $trueNeckPitch°")
+                    Log.d(TAG, "Unified Math -> LivePitch: ${String.format("%.1f", livePitch)}° | SensorFlexion: ${String.format("%.1f", sensorFlexion)}° | FacePitch: ${String.format("%.1f", facePitchExtracted)}° | TrueNeck: ${String.format("%.1f", trueNeckPitch)}°")
                 }
 
                 val prefs = SecurePrefs.get(this)
@@ -176,7 +189,7 @@ class CheckPostureActivity : ComponentActivity() {
                     .putInt("ManualChecksBadToday", bad)
                     .apply()
 
-                fireResultNotification(message)
+                fireResultNotification(message, trueNeckPitch)
                 finish()
             }
             .addOnFailureListener { e ->
@@ -207,22 +220,104 @@ class CheckPostureActivity : ComponentActivity() {
     }
 
     private fun fireFallbackNotification(reason: String) {
-        fireResultNotification("Posture check failed ($reason). Based on the phone sensors, your neck may still be strained.")
+        Log.d(TAG, "Camera path unavailable ($reason) — falling back to sensor pitch")
+        // The camera is only a refinement; the accel/gyro sensors are the primary
+        // posture signal and are what triggered this check. So when the camera
+        // can't give us a face reading, fall back to the live sensor pitch —
+        // this still surfaces the tilt/kg data and the "Why this happened?"
+        // button whenever posture is actually bad, instead of a dead error.
+        val livePitch = com.example.neckguard.engine.PostureEngine.currentPitch
+        val baselinePitch = 10f // Must match PostureEngine.BASELINE_PITCH
+        val sensorFlexion = ((livePitch - baselinePitch).coerceAtLeast(0f)) * 0.85f
+
+        val prefs = SecurePrefs.get(this)
+        val vibe = prefs.getString("UserVibe", "") ?: ""
+        val message = generateNotificationMessage(vibe, sensorFlexion)
+
+        fireResultNotification(message, sensorFlexion)
     }
 
-    private fun fireResultNotification(text: String) {
+    private fun fireResultNotification(text: String, neckPitch: Float = 0f) {
         val manager = getSystemService(NotificationManager::class.java)
+        
+        val isBadPosture = neckPitch > 15f
+        
+        // Spinal load estimate (Hansraj 2014)
+        val spinalLoadKg = when {
+            neckPitch < 15f -> 12
+            neckPitch < 25f -> 18
+            neckPitch < 35f -> 22
+            neckPitch < 45f -> 27
+            else            -> 32
+        }
 
-        val style = NotificationCompat.BigTextStyle().bigText(text)
+        // Incorporate scientific data directly in the result notification
+        val scientificText = if (isBadPosture) {
+            "$text\n\nSensors picked up a ~${neckPitch.toInt()}° neck tilt. That's ~${spinalLoadKg}kg on your cervical spine!"
+        } else {
+            text
+        }
+
+        val style = NotificationCompat.BigTextStyle().bigText(scientificText)
+
+        val postureState = when {
+            neckPitch > 35f -> "POOR"
+            neckPitch > 15f -> "MODERATE"
+            else            -> "GOOD"
+        }
+
+        // Main tap -> opens dashboard
+        val mainIntent = android.content.Intent(this, MainActivity::class.java).apply {
+            flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val mainPendingIntent = android.app.PendingIntent.getActivity(
+            this, 1002, mainIntent,
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+        )
 
         val builder = NotificationCompat.Builder(this, "neckguard_alert_channel")
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Posture Result")
-            .setContentText(text)
+            .setContentText(scientificText)
             .setStyle(style)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
+            .setContentIntent(mainPendingIntent)
             .setTimeoutAfter(RESULT_NOTIFICATION_TIMEOUT_MS)
+
+        if (isBadPosture) {
+            // Bad posture -> "Why this happened?" -> PostureInsightActivity
+            val insightIntent = android.content.Intent(this, PostureInsightActivity::class.java).apply {
+                putExtra("neck_pitch", neckPitch)
+                putExtra("spinal_load_kg", spinalLoadKg)
+                putExtra("posture_state", postureState)
+                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val insightPendingIntent = android.app.PendingIntent.getActivity(
+                this, 1003, insightIntent,
+                android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            builder.addAction(0, "Why this happened? \uD83D\uDD0D", insightPendingIntent)
+        } else {
+            // Good posture -> exercise CTA (keep existing behavior)
+            val prefs = SecurePrefs.get(this)
+            val repository = com.example.neckguard.data.UserRepository(prefs)
+            val assignedList = repository.assignedExercisesList
+            val completedList = repository.completedExercisesTodayList
+            val targetExercise = assignedList.firstOrNull { !completedList.contains(it) }
+                ?: assignedList.firstOrNull() ?: "Chin Tuck"
+
+            val exerciseIntent = android.content.Intent(this, MainActivity::class.java).apply {
+                action = "OPEN_EXERCISE"
+                putExtra("exercise_name", targetExercise)
+                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val exercisePendingIntent = android.app.PendingIntent.getActivity(
+                this, 1001, exerciseIntent,
+                android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            builder.addAction(0, "Try $targetExercise \uD83D\uDCAA", exercisePendingIntent)
+        }
 
         manager.notify(ALERT_NOTIFICATION_ID, builder.build())
     }
@@ -233,31 +328,22 @@ class CheckPostureActivity : ComponentActivity() {
             pitch > 15f -> "moderate"
             else -> "great"
         }
-        val pitchStr = String.format("%.1f", pitch)
 
-        val messages = when (vibe) {
-            "Chaotic — memes, gen-z humour, unhinged energy" -> when (type) {
-                "high_risk" -> listOf("Bro your neck is at $pitchStr° 💀 Are you trying to become a shrimp?", "Bestie plz sit up, $pitchStr° flexion is giving goblin energy.", "Your spine is screaming rn ($pitchStr°). Fix it before you evolve into a prawn 🦐.")
-                "moderate" -> listOf("Ayo, $pitchStr° is a bit sus. Straighten up.", "You're slipping into gremlin mode ($pitchStr°). Pull it back.", "Mild slouch detected ($pitchStr°). Let's not make it worse.")
-                else -> listOf("Posture check passed! You actually look like a human being.", "Slay! Your spine is serving absolute straightness.", "No notes, your posture is immaculate rn.")
-            }
-            "Hype mode — motivational, hustle, 'you got this'" -> when (type) {
-                "high_risk" -> listOf("High Risk ($pitchStr°)! You're better than this, straighten that back and conquer the day!", "Don't let bad posture defeat you! $pitchStr° flexion is a setback, let's bounce back!", "You are a warrior, but right now your neck ($pitchStr°) says otherwise. Head up!")
-                "moderate" -> listOf("Keep the momentum going! Fix that $pitchStr° slouch and stay sharp.", "You're slipping a bit ($pitchStr°). Reset and get back to grinding with good posture!", "Almost there! Just straighten up a bit from $pitchStr° and you're golden.")
-                else -> listOf("That's what I'm talking about! Great posture, keep crushing it!", "Posture on point! You're unstoppable right now.", "Perfect alignment! Keep that head held high.")
-            }
-            "Calm & mindful — gentle, soft, no pressure" -> when (type) {
-                "high_risk" -> listOf("Your neck is carrying a lot of tension right now ($pitchStr°). Let's gently sit up and take a deep breath.", "It looks like you're leaning in quite deeply ($pitchStr°). Please remember to be kind to your spine.", "Take a gentle pause. Your neck is flexed at $pitchStr°, let's slowly bring it back to a comfortable center.")
-                "moderate" -> listOf("A gentle reminder to check your posture ($pitchStr°). Small adjustments make a big difference.", "You seem to be slightly slouching ($pitchStr°). Let's gently reset your shoulders.", "Whenever you're ready, try to ease back into a more upright position ($pitchStr°).")
-                else -> listOf("Your posture is beautiful right now. Take a deep breath and enjoy this alignment.", "Wonderful alignment. Your spine is balanced and at ease.", "You are sitting perfectly. Keep honoring your body's natural shape.")
-            }
-            else -> when (type) { // "Just the facts" or default
-                "high_risk" -> listOf("High Risk Mode ($pitchStr° flexion): You are heavily slouched. Please sit up.", "Critical flexion detected: $pitchStr°. Immediate correction recommended.", "Warning: $pitchStr° neck flexion. This exceeds safe ergonomic limits.")
-                "moderate" -> listOf("Moderate Risk ($pitchStr° flexion): Your neck is slightly crouched.", "Notice: $pitchStr° flexion. Adjust your posture to prevent strain.", "Alert: $pitchStr° flexion detected. Straighten your back.")
-                else -> listOf("Posture looks great! Keep it up.", "Posture check passed: normal alignment.", "Status: Healthy alignment. No correction needed.")
-            }
+        // ── Merged pool — all vibes blended for maximum variety ──────
+        val messages = when (type) {
+            "high_risk", "moderate" -> NotificationPool.badPostureMessages
+            else -> NotificationPool.goodPostureMessages
         }
-        return messages.random()
+
+        // ── Avoid back-to-back repeats ──────────────────────────────
+        val prefKey = "lastResultMsgIdx_$type"
+        val prefs = getSharedPreferences("NeckGuardPrefs", MODE_PRIVATE)
+        val lastIdx = prefs.getInt(prefKey, -1)
+        var idx = messages.indices.random()
+        while (idx == lastIdx && messages.size > 1) idx = messages.indices.random()
+        prefs.edit().putInt(prefKey, idx).apply()
+
+        return messages[idx]
     }
 
     companion object {

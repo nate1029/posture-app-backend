@@ -146,7 +146,8 @@ object SupabaseClient {
      */
     suspend fun saveProfile(
         name: String, age: String, vibe: String, context: String, health: String, interval: Long,
-        lifetimePoints: Int, totalExercisesDone: Int, assignedExercises: List<String>, completedExercisesToday: Set<String>
+        lifetimePoints: Int, totalExercisesDone: Int, assignedExercises: List<String>, completedExercisesToday: Set<String>,
+        currentStreak: Int = 0, bestStreak: Int = 0, yesterdayScore: Int = -1
     ): Boolean = withContext(Dispatchers.IO) {
         if (userId == null || accessToken == null) {
             LogX.e(TAG, "Cannot save profile without being authenticated!")
@@ -166,6 +167,9 @@ object SupabaseClient {
             put("total_exercises_done", totalExercisesDone)
             put("assigned_exercises", org.json.JSONArray(assignedExercises))
             put("completed_exercises_today", org.json.JSONArray(completedExercisesToday.toList()))
+            put("current_streak", currentStreak)
+            put("best_streak", bestStreak)
+            put("yesterday_score", yesterdayScore)
         }.toString()
 
         // Attempt a raw POST first (creates a new row). 

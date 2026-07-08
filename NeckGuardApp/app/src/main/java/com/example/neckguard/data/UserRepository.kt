@@ -99,6 +99,12 @@ class UserRepository(val prefs: SharedPreferences) {
     val currentDayOfYear: Int get() = prefs.getInt("CurrentDayOfYear", -1)
     fun setCurrentDayOfYear(day: Int) = prefs.edit().putInt("CurrentDayOfYear", day).apply()
 
+    val currentStreak: Int get() = prefs.getInt("CurrentStreak", 0)
+    fun setCurrentStreak(days: Int) = prefs.edit().putInt("CurrentStreak", days).apply()
+
+    val bestStreak: Int get() = prefs.getInt("BestStreak", 0)
+    fun setBestStreak(days: Int) = prefs.edit().putInt("BestStreak", days).apply()
+
     /**
      * Today's assigned & completed exercises now use [SharedPreferences.putStringSet]
      * instead of joining titles with commas. The CSV format would have
@@ -115,6 +121,10 @@ class UserRepository(val prefs: SharedPreferences) {
         val current = completedExercisesTodayList.toMutableSet()
         if (current.add(id)) writeListPref(KEY_COMPLETED_EX_TODAY, current)
     }
+    fun removeCompletedExerciseToday(id: String) = synchronized(COUNTER_LOCK) {
+        val current = completedExercisesTodayList.toMutableSet()
+        if (current.remove(id)) writeListPref(KEY_COMPLETED_EX_TODAY, current)
+    }
 
     val manualChecksTotalToday: Int get() = prefs.getInt("ManualChecksTotalToday", 0)
     fun setManualChecksTotalToday(count: Int) = prefs.edit().putInt("ManualChecksTotalToday", count).apply()
@@ -122,33 +132,45 @@ class UserRepository(val prefs: SharedPreferences) {
     val manualChecksBadToday: Int get() = prefs.getInt("ManualChecksBadToday", 0)
     fun setManualChecksBadToday(count: Int) = prefs.edit().putInt("ManualChecksBadToday", count).apply()
 
+    val nudgesFiredToday: Int get() = prefs.getInt("NudgesFiredToday", 0)
+    fun setNudgesFiredToday(count: Int) = prefs.edit().putInt("NudgesFiredToday", count).apply()
+    fun addNudgeFiredToday() = synchronized(COUNTER_LOCK) {
+        prefs.edit().putInt("NudgesFiredToday", prefs.getInt("NudgesFiredToday", 0) + 1).apply()
+    }
+
     /**
      * Reads a string-set pref, transparently migrating any legacy CSV value
      * left over from an earlier build. Returns the set as a List for
      * positional use (assigned-exercises display order).
      */
     private fun readListPref(key: String): List<String> {
+        // EncryptedSharedPreferences has a known bug with getStringSet where it fails
+        // to properly decrypt or update sets, causing them to appear empty across process
+        // boundaries (like from CheckPostureActivity). We use CSV strings instead.
         try {
-            val asSet = prefs.getStringSet(key, null)
-            if (asSet != null) return asSet.toList()
+            val raw = prefs.getString(key, null)
+            if (!raw.isNullOrBlank()) {
+                return raw.split(",").filter { it.isNotBlank() }
+            }
         } catch (e: ClassCastException) {
-            // It's the legacy CSV format; fall through to migration below.
+            // If we somehow have a legacy StringSet, read it and migrate it
+            try {
+                val asSet = prefs.getStringSet(key, null)
+                if (asSet != null) {
+                    val list = asSet.toList()
+                    writeListPref(key, list.toSet())
+                    return list
+                }
+            } catch (e2: Exception) {
+                // Ignore
+            }
         }
-
-        val legacy = try { prefs.getString(key, null) } catch (e: ClassCastException) { null }
-        if (legacy.isNullOrBlank()) return emptyList()
-
-        // Migrate the legacy CSV value over to a string-set, in place.
-        val items = legacy.split(",").filter { it.isNotBlank() }
-        prefs.edit()
-            .remove(key)
-            .putStringSet(key, items.toSet())
-            .apply()
-        return items
+        return emptyList()
     }
 
     private fun writeListPref(key: String, set: Set<String>) {
-        prefs.edit().putStringSet(key, set).apply()
+        val csv = set.joinToString(",")
+        prefs.edit().putString(key, csv).apply()
     }
 
     /**
@@ -194,7 +216,11 @@ class UserRepository(val prefs: SharedPreferences) {
         val assigned = assignedExercisesList
         val completed = completedExercisesTodayList
 
-        val ok = SupabaseClient.saveProfile(name, age, vibe, ctx, health, interval, lifetimePoints, totalExercisesDone, assigned, completed)
+        val currentStreak = prefs.getInt("CurrentStreak", 0)
+        val bestStreak = prefs.getInt("BestStreak", 0)
+        val yesterdayScore = prefs.getInt("YesterdayScore", -1)
+
+        val ok = SupabaseClient.saveProfile(name, age, vibe, ctx, health, interval, lifetimePoints, totalExercisesDone, assigned, completed, currentStreak, bestStreak, yesterdayScore)
         if (ok) setPendingProfileSync(false)
         return ok
     }
@@ -238,6 +264,9 @@ class UserRepository(val prefs: SharedPreferences) {
                     putLong("IntervalPreferenceMs", profile.optLong("check_interval_ms", 30 * 60 * 1000L))
                     putInt("LifetimePoints", profile.optInt("lifetime_points", 0))
                     putInt("TotalExercisesDone", profile.optInt("total_exercises_done", 0))
+                    putInt("CurrentStreak", profile.optInt("current_streak", 0))
+                    putInt("BestStreak", profile.optInt("best_streak", 0))
+                    putInt("YesterdayScore", profile.optInt("yesterday_score", -1))
                     putBoolean("OnboardingComplete", true)
                 }.apply()
                 
