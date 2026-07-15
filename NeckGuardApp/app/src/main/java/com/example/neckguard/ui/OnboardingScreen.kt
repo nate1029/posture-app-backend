@@ -162,38 +162,43 @@ fun OnboardingScreen(
                             syncingProfile = true
                             syncError = null
                             coroutineScope.launch {
-                                // Try Supabase first
-                                val success = com.example.neckguard.SupabaseClient.saveProfile(
-                                    name, ageGroup, notificationVibe, usageContext, neckHealth, checkIntervalMs,
-                                    0, 0, emptyList(), emptySet()
-                                )
-                                syncingProfile = false
-
-                                if (success) {
-                                    prefs.edit().apply {
-                                        putString("UserName", name)
-                                        putString("UserAgeGrp", ageGroup)
-                                        putString("UserVibe", notificationVibe)
-                                        putString("UserContext", usageContext)
-                                        putString("UserHealth", neckHealth)
-                                        putLong("IntervalPreferenceMs", checkIntervalMs)
-                                        putBoolean("OnboardingComplete", true)
-                                    }.apply()
-                                    onComplete()
-                                } else {
-                                    // Network/server failure — don't strand the
-                                    // user on this screen. Persist their
-                                    // answers locally so the app is fully
-                                    // usable, queue a deferred sync, and
-                                    // proceed. The flag is drained by
-                                    // MainViewModel.checkStatus on next
-                                    // launch (and after the next successful
-                                    // login). (B-26)
-                                    repository.markOnboardingPendingSync(
-                                        name, ageGroup, notificationVibe,
-                                        usageContext, neckHealth, checkIntervalMs
+                                try {
+                                    val success = com.example.neckguard.SupabaseClient.saveProfile(
+                                        name, ageGroup, notificationVibe, usageContext, neckHealth, checkIntervalMs,
+                                        0, 0, emptyList(), emptySet()
                                     )
-                                    onComplete()
+                                    if (success) {
+                                        prefs.edit().apply {
+                                            putString("UserName", name)
+                                            putString("UserAgeGrp", ageGroup)
+                                            putString("UserVibe", notificationVibe)
+                                            putString("UserContext", usageContext)
+                                            putString("UserHealth", neckHealth)
+                                            putLong("IntervalPreferenceMs", checkIntervalMs)
+                                            putBoolean("OnboardingComplete", true)
+                                        }.apply()
+                                        onComplete()
+                                    } else {
+                                        repository.markOnboardingPendingSync(
+                                            name, ageGroup, notificationVibe,
+                                            usageContext, neckHealth, checkIntervalMs
+                                        )
+                                        onComplete()
+                                    }
+                                } catch (e: Exception) {
+                                    // saveProfile threw (network timeout, SSL, etc.) — fall back
+                                    // to local-only path so user is never stranded here.
+                                    try {
+                                        repository.markOnboardingPendingSync(
+                                            name, ageGroup, notificationVibe,
+                                            usageContext, neckHealth, checkIntervalMs
+                                        )
+                                        onComplete()
+                                    } catch (_: Exception) {
+                                        syncError = "Setup failed. Please try again."
+                                    }
+                                } finally {
+                                    syncingProfile = false
                                 }
                             }
                         }
